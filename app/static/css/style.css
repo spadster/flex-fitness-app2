@@ -1,0 +1,101 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: linear-gradient(135deg, #f8f9fa, #e9f2ff);
+  color: #333;
+  min-height: 100vh;
+}
+
+.navbar {
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+
+.navbar-brand {
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.container {
+  padding-top: 60px;
+  padding-bottom: 60px;
+}
+
+.card {
+  border: none;
+  border-radius: 15px;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+}
+
+.card-title {
+  font-weight: 600;
+  margin-bottom: 1rem;
+  color: #0d6efd;
+}
+
+.form-control {
+  border-radius: 10px;
+  border: 1px solid #ced4da;
+  padding: 0.75rem;
+}
+
+.form-control:focus {
+  border-color: #0d6efd;
+  box-shadow: 0 0 0 0.15rem rgba(13,110,253,0.25);
+}
+
+.btn {
+  border-radius: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  padding: 0.75rem;
+  transition: background-color 0.25s ease, transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.btn:hover {
+  transform: translateY(-2px) scale(1.03);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.15);
+}
+
+.btn:active {
+  transform: translateY(0) scale(1);
+  box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+}
+
+.btn-primary:hover {
+  background-color: #0b5ed7;
+}
+
+.btn-success:hover {
+  background-color: #146c43 !important;
+}
+
+.btn-outline-primary {
+  border-width: 2px;
+}
+
+.display-4 {
+  font-size: 3rem;
+  font-weight: 700;
+  color: #0d6efd;
+}
+
+.lead {
+  font-size: 1.25rem;
+  color: #555;
+}
+
+@media (max-width: 768px) {
+  .welcome h2 {
+    font-size: 1.8rem;
+  }
+
+  .display-4 {
+    font-size: 2.2rem;
+  }
+}
