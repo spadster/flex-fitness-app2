@@ -9,20 +9,29 @@
 </head>
 <body class="bg-light">
 
-  <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
-    <div class="container">
-      <a class="navbar-brand" href="#">Temp</a>
+  <!-- Persistent blue navbar -->
+  <body class="index-page">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+      <!-- Left: Login as Trainer -->
+      <a href="{{ url_for('auth.login_trainer') }}" class="btn btn-outline-light btn-sm">
+        Login as Trainer
+      </a>
+
+      <!-- Right: Temp -->
+      <a class="navbar-brand ms-auto fw" href="{{ url_for('main.home') }}" style="font-size: 1.5;">
+        Temp
+      </a>
     </div>
   </nav>
 
+  <!-- Main content -->
   <div class="container text-center d-flex flex-column justify-content-center align-items-center" style="min-height: 90vh;">
-    <h1 class="fw-bold">Welcome messsage!</h1>
+    <h1 class="fw-bold">Welcome message!</h1>
     <p class="text-muted mb-5">Start your fitness journey today.</p>
 
     <div class="d-flex flex-column gap-3" style="max-width: 300px; width: 100%;">
-      <a href="{{ url_for('auth.login_trainer')}}" class="btn btn-primary w-100">Login as Trainer</a>
-      <a href="{{ url_for('auth.login_member')}}" class="btn btn-success w-100">Login as Member</a>
-      <a href="{{ url_for('auth.register')}}" class="btn btn-outline-secondary w-100">Create an Account</a>
+      <a href="{{ url_for('auth.login_member') }}" class="btn btn-primary w-100">Login as Member</a>
+      <a href="{{ url_for('auth.register') }}" class="btn btn-success w-100">Create an Account</a>
     </div>
   </div>
 

@@ -58,6 +58,10 @@ def register():
             password_hash=password_hash,
             role=role
         )
+
+        if user.role == 'trainer':
+            user.generate_trainer_code()
+            
         db.session.add(user)
         db.session.commit()
 

@@ -1,22 +1,38 @@
-# Python
+# Byte-compiled / optimized / DLL files
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-*.sqlite3
+*.py[cod]
+*$py.class
 
 # Virtual environment
 venv/
-env/
 ENV/
+env/
 
-# IDE files
+# SQLite database
+*.sqlite3
+instance/
+*.db
+
+# Flask environment / config files
+*.env
+*.log
+*.pot
+*.pyc
+
+# VS Code settings
 .vscode/
-.idea/
 
-# OS files
+# macOS
 .DS_Store
 
-# Flask secrets
-instance/
-.env
+# PyCharm
+.idea/
+
+# Distribution / packaging
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
