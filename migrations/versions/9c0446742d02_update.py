@@ -26,6 +26,8 @@ def upgrade():
     sa.Column('carbs_g', sa.Float(), nullable=True),
     sa.Column('fats_g', sa.Float(), nullable=True),
     sa.Column('source_id', sa.String(length=100), nullable=True),
+    sa.Column('serving_size', sa.Float(), nullable=True),
+    sa.Column('serving_unit', sa.String(length=50), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('user',

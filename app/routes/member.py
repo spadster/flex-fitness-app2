@@ -1,12 +1,12 @@
 from flask import Blueprint, render_template, session, flash, redirect, request, url_for, jsonify
 from app import db
-from app.models import User, Progress, Food, UserFoodLog
+from app.models import User, Progress, Food, UserFoodLog, FoodMeasure
 from datetime import datetime
 
 member_bp = Blueprint('member', __name__, url_prefix='/member')
 
 # -----------------------------
-# Context processor to inject user
+# Inject user into templates
 # -----------------------------
 @member_bp.app_context_processor
 def inject_user():
@@ -15,9 +15,6 @@ def inject_user():
         return {"user": User.query.get(user_id)}
     return {}
 
-# -----------------------------
-# Dashboard + Add Food
-# -----------------------------
 @member_bp.route("/dashboard", methods=["GET", "POST"])
 def dashboard():
     user_id = session.get("user_id")
@@ -28,40 +25,66 @@ def dashboard():
 
     user = User.query.get(user_id)
     today = datetime.utcnow().date()
-
-    # -----------------------------
-    # Handle search submission
-    # -----------------------------
     search_results = []
+
     if request.method == "POST":
         search_query = request.form.get("food_search", "").strip()
         quantity_input = request.form.get("log_quantity", "").strip()
         food_id = request.form.get("food_id")
+        unit_input = request.form.get("unit", "g").strip().lower()
 
-        # If user is trying to add a food log
+        # -----------------------------
+        # If user just types a name and clicks Add → use top match
+        # -----------------------------
+        if not food_id and search_query:
+            top_result = Food.query.filter(Food.name.ilike(f"%{search_query}%")).first()
+            if top_result:
+                food_id = top_result.id
+
+        # -----------------------------
+        # Add a food log
+        # -----------------------------
         if food_id and quantity_input:
             try:
                 quantity = float(quantity_input)
                 if quantity <= 0:
                     raise ValueError
+
                 food = Food.query.get(int(food_id))
-                if food:
-                    log = UserFoodLog(
-                        user_id=user.id,
-                        food_id=food.id,
-                        quantity=quantity,
-                        log_date=today
-                    )
-                    db.session.add(log)
-                    db.session.commit()
-                    flash(f"Added {quantity}g of {food.name} to your tracker!", "success")
-                else:
+                if not food:
                     flash("Selected food not found.", "danger")
+                    return redirect(url_for("member.dashboard"))
+
+                # Check if this food has a specific measure (cup, tbsp, tsp, etc.)
+                measure = FoodMeasure.query.filter_by(food_id=food.id, measure_name=unit_input).first()
+
+                if measure:
+                    grams = quantity * measure.grams
+                elif unit_input in UNIT_TO_GRAMS:
+                    grams = quantity * UNIT_TO_GRAMS[unit_input]
+                else:
+                    grams = quantity  # assume grams by default
+
+                log = UserFoodLog(
+                    user_id=user.id,
+                    food_id=food.id,
+                    quantity=grams,  # store actual grams
+                    unit="g",
+                    log_date=today
+                )
+                db.session.add(log)
+                db.session.commit()
+
+                flash(f"Added {quantity} {unit_input} of {food.name}!", "success")
+
             except ValueError:
-                flash("Please enter a valid quantity in grams.", "danger")
+                flash("Please enter a valid quantity.", "danger")
+
             return redirect(url_for("member.dashboard"))
 
-        # If user just typed something but didn't select a suggestion
+        # -----------------------------
+        # Search foods without adding
+        # -----------------------------
         elif search_query:
             search_results = Food.query.filter(Food.name.ilike(f"%{search_query}%")).limit(10).all()
             if not search_results:
@@ -70,42 +93,164 @@ def dashboard():
             flash("Please enter a food name to search.", "warning")
 
     # -----------------------------
-    # Fetch today's logs + totals
+    # Fetch today's logs + compute totals
     # -----------------------------
     user_food_logs = UserFoodLog.query.filter_by(user_id=user.id, log_date=today).all()
     totals = {"calories": 0, "protein": 0, "carbs": 0, "fat": 0}
+
     for log in user_food_logs:
-        factor = log.quantity / 100
-        totals["calories"] += (log.food.calories or 0) * factor
-        totals["protein"] += (log.food.protein_g or 0) * factor
-        totals["carbs"] += (log.food.carbs_g or 0) * factor
-        totals["fat"] += (log.food.fats_g or 0) * factor
+        scaled = log.scaled  # uses your existing @property
+        totals["calories"] += scaled["calories"]
+        totals["protein"] += scaled["protein"]
+        totals["carbs"] += scaled["carbs"]
+        totals["fat"] += scaled["fats"]
 
     return render_template(
         "dashboard-member.html",
         user=user,
         user_food_logs=user_food_logs,
         totals=totals,
-        search_results=search_results
+        search_results=search_results,
+        UNIT_TO_GRAMS=UNIT_TO_GRAMS
     )
 
+
+UNIT_TO_GRAMS = {
+    "g": 1,
+    "kg": 1000,
+    "oz": 28.35,
+    "lb": 453.592,
+    "tsp": 4.2,   # approximate
+    "tbsp": 14.3,
+    "cup": 240
+}
+
+def scale_nutrients(food_id, quantity, unit):
+    measure = FoodMeasure.query.filter_by(food_id=food_id, measure_name=unit).first()
+    if measure:
+        grams = quantity * measure.grams
+    else:
+        # fallback to 100g base if unit is unknown
+        grams = quantity
+
+    food = Food.query.get(food_id)
+    factor = grams / 100  # assuming macros stored per 100g
+
+    return {
+        "calories": round(food.calories * factor, 1),
+        "protein_g": round(food.protein_g * factor, 1),
+        "carbs": round(food.carbs_g * factor, 1),
+        "fats": round(food.fats_g * factor, 1)
+    }
+
+
+# -----------------------------
+# Search Foods API
+# -----------------------------
 @member_bp.route("/search-foods")
 def search_foods():
-    query = request.args.get("q", "").strip()
+    query = (request.args.get("q") or "").strip()
+    unit = request.args.get("unit", "g")
+    try:
+        quantity = float(request.args.get("quantity", 1))
+    except ValueError:
+        quantity = 1
+
     results = []
     if query:
-        foods = Food.query.filter(Food.name.ilike(f"%{query}%")).limit(10).all()
+        foods = (
+            Food.query
+            .filter(Food.name != None)
+            .filter(Food.name.ilike(f"%{query}%"))
+            .limit(10)
+            .all()
+        )
         for food in foods:
+            # Scale nutrients using food-specific measure if exists
+            grams_per_unit = UNIT_TO_GRAMS.get(unit.lower(), 1)
+            measure = FoodMeasure.query.filter_by(food_id=food.id, measure_name=unit.lower()).first()
+            if measure:
+                grams_per_unit = measure.grams
+
+            quantity_in_grams = quantity * grams_per_unit
+            serving_grams = food.serving_size or 100
+            factor = quantity_in_grams / serving_grams
+
             results.append({
                 "id": food.id,
                 "name": food.name,
-                "calories": food.calories,
-                "protein": food.protein_g,
-                "carbs": food.carbs_g,
-                "fats": food.fats_g
+                "calories": round((food.calories or 0) * factor, 1),
+                "protein_g": round((food.protein_g or 0) * factor, 1),
+                "carbs": round((food.carbs_g or 0) * factor, 1),
+                "fats": round((food.fats_g or 0) * factor, 1),
+                "serving_size": food.serving_size,
+                "serving_unit": food.serving_unit
             })
+
     return jsonify({"results": results})
 
+@member_bp.route("/add-food", methods=["POST"])
+def add_food():
+    user_id = session.get("user_id")
+    if not user_id:
+        flash("Please log in first.", "danger")
+        return redirect(url_for("auth.login_member"))
+
+    food_name = request.form.get("food_name", "").strip()
+    quantity = float(request.form.get("quantity") or 1)
+    unit = request.form.get("unit", "g").strip().lower()  # ← Make sure it's lowercase
+    food_id = request.form.get("food_id")
+    today = datetime.utcnow().date()
+
+    if food_id:
+        # Existing food from DB
+        food = Food.query.get(int(food_id))
+        if not food:
+            flash("Food not found.", "danger")
+            return redirect(url_for("member.dashboard"))
+    else:
+        # New food (custom)
+        calories = float(request.form.get("calories") or 0)
+        protein_g = float(request.form.get("protein_g") or 0)
+        carbs_g = float(request.form.get("carbs_g") or 0)
+        fats_g = float(request.form.get("fats_g") or 0)
+
+        food = Food(
+            name=food_name,
+            calories=calories,
+            protein_g=protein_g,
+            carbs_g=carbs_g,
+            fats_g=fats_g,
+            source_id=None,
+            serving_size=100,
+            serving_unit="g"
+        )
+        db.session.add(food)
+        db.session.commit()
+
+    # ✅ Convert to grams BEFORE saving (same as dashboard route)
+    measure = FoodMeasure.query.filter_by(food_id=food.id, measure_name=unit).first()
+    
+    if measure:
+        grams = quantity * measure.grams
+    elif unit in UNIT_TO_GRAMS:
+        grams = quantity * UNIT_TO_GRAMS[unit]
+    else:
+        grams = quantity  # assume grams by default
+
+    # Save user log (always in grams)
+    log = UserFoodLog(
+        user_id=user_id,
+        food_id=food.id,
+        quantity=grams,  # ← Store as grams
+        unit="g",        # ← Always "g"
+        log_date=today
+    )
+    db.session.add(log)
+    db.session.commit()
+
+    flash(f"Added {quantity} {unit} of {food.name}!", "success")
+    return redirect(url_for("member.dashboard"))
 
 # -----------------------------
 # View Progress
@@ -155,32 +300,40 @@ def exercise_plan():
     plan = []
     return render_template("exercise-plan.html", user=user, plan=plan)
 
-@member_bp.route('/add-custom-food', methods=['POST'])
-def add_custom_food():
-    user_id = session.get("user_id")
+
+@member_bp.route("/get-measures/<int:food_id>")
+def get_measures(food_id):
+    measures = FoodMeasure.query.filter_by(food_id=food_id).all()
+    return jsonify({
+        "measures": [{"measure_name": m.measure_name, "grams": m.grams} for m in measures]
+    })
+
+# -----------------------------
+# Delete Food Log
+# -----------------------------
+@member_bp.route('/delete-food-log/<int:log_id>', methods=['POST'])
+def delete_food_log(log_id):
+    user_id = session.get('user_id')
     if not user_id:
         flash("Please log in first.", "danger")
         return redirect(url_for("auth.login_member"))
-
-    name = request.form.get("custom_name").strip()
-    calories = float(request.form.get("calories") or 0)
-    protein_g = float(request.form.get("protein_g") or 0)
-    carbs_g = float(request.form.get("carbs_g") or 0)
-    fats_g = float(request.form.get("fats_g") or 0)
-
-    if not name:
-        flash("Food name cannot be empty.", "danger")
+    
+    # Find the log entry
+    log = UserFoodLog.query.get(log_id)
+    
+    if not log:
+        flash("Food log not found.", "danger")
         return redirect(url_for("member.dashboard"))
-
-    food = Food(
-        name=name,
-        source_id=None,  # custom foods don't have a USDA ID
-        calories=calories,
-        protein_g=protein_g,
-        carbs_g=carbs_g,
-        fats_g=fats_g
-    )
-    db.session.add(food)
+    
+    # Make sure this log belongs to the current user
+    if log.user_id != user_id:
+        flash("You don't have permission to delete this log.", "danger")
+        return redirect(url_for("member.dashboard"))
+    
+    # Delete the log
+    food_name = log.food.name
+    db.session.delete(log)
     db.session.commit()
-    flash(f"Custom food '{name}' added!", "success")
+    
+    flash(f"Removed {food_name} from your log.", "success")
     return redirect(url_for("member.dashboard"))
