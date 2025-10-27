@@ -44,5 +44,5 @@ if current_chunk:
 for idx, chunk in enumerate(chunks, 1):
     output_path = os.path.join(OUTPUT_DIR, f"SRLegacyFoods_part{idx}.json")
     with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(chunk, f, ensure_ascii=False, indent=2)
+        json.dump(chunk, f, ensure_ascii=False, separators=(',', ':'))
     print(f"Saved {output_path} ({len(chunk)} items)")
