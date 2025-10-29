@@ -1,89 +1,409 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Member Dashboard | Temp</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Member Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <style>
+    #foodSuggestions { position: absolute; z-index:1000; max-height:250px; overflow-y:auto; display:none; }
+    .macro-card { border-left:4px solid; transition:transform 0.2s; }
+    .macro-card:hover { transform:translateY(-2px); box-shadow:0 4px 8px rgba(0,0,0,0.1); }
+    .macro-card.calories { border-left-color:#ff6b6b; }
+    .macro-card.protein  { border-left-color:#4ecdc4; }
+    .macro-card.carbs    { border-left-color:#95e1d3; }
+    .macro-card.fats     { border-left-color:#feca57; }
+    .progress-ring-circle { transition: stroke-dashoffset 0.35s; }
+  </style>
 </head>
 <body class="bg-light">
 <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
   <div class="container">
-    <a class="navbar-brand ms-auto fw" href="{{ url_for('main.home') }}">Temp</a>
-    <a href="{{ url_for('auth.logout') }}" class="btn btn-outline-light ms-3">Log Out</a>
+    <a class="navbar-brand" href="/">Flex</a>
+    <div class="ms-auto">
+      <a href="/auth/logout" class="btn btn-outline-light">Log out</a>
+    </div>
   </div>
 </nav>
 
 <div class="container mt-4">
-  <h1 class="mb-4">Welcome back, {{ user.first_name }}!</h1>
+  <h1 class="mb-3">Hello, {{ user.first_name if user is defined else 'Member' }}</h1>
 
   <div class="row">
-    <!-- Sidebar -->
+    <!-- sidebar -->
     <div class="col-md-3 mb-3">
       <div class="list-group">
-        <a href="{{ url_for('member.dashboard') }}" class="list-group-item list-group-item-action active">Dashboard</a>
-        <a href="{{ url_for('member.view_progress') }}" class="list-group-item list-group-item-action">View Progress</a>
-        <a href="{{ url_for('member.exercise_plan') }}" class="list-group-item list-group-item-action">Exercise Plan</a>
+        <a href="/member/dashboard" class="list-group-item list-group-item-action active">Dashboard</a>
+        <a href="/member/view_progress" class="list-group-item list-group-item-action">View Progress</a>
+        <a href="/member/exercise_plan" class="list-group-item list-group-item-action">Exercise Plan</a>
       </div>
     </div>
 
-    <!-- Main content -->
+    <!-- main -->
     <div class="col-md-9">
-      <h3>Macronutrient Tracker</h3>
-      
-      <!-- Add Food Form -->
-      <form method="POST" class="mb-4">
-        <div class="input-group">
-          <input type="text" name="food_search" class="form-control" placeholder="Search food..." value="{{ request.form.get('food_search', '') }}" required>
-          <input type="number" step="0.01" name="quantity" class="form-control" placeholder="Quantity (grams)" required>
+      <!-- Daily Calorie Goal + Macros -->
+      <div class="card mb-4 shadow-sm">
+        <div class="card-body text-center">
+          <h5 class="card-title mb-3">Daily Calorie Goal</h5>
+          <div class="d-flex justify-content-center align-items-center mb-3">
+            <svg class="progress-ring" width="160" height="160">
+              <circle class="progress-ring-circle" stroke="#e0e0e0" stroke-width="12" fill="transparent" r="65" cx="80" cy="80" />
+              <circle class="progress-ring-circle" stroke="#ff6b6b" stroke-width="12" fill="transparent" r="65" cx="80" cy="80"
+                stroke-dasharray="409.96 409.96"
+                stroke-dashoffset="{{ 409.96 - (409.96 * (totals.calories / (user.calorie_goal or 2000))) if (totals and user) else 409.96 - (409.96 * (0)) }}"
+                stroke-linecap="round" />
+              <text x="80" y="75" text-anchor="middle" font-size="28" font-weight="bold" fill="#333">
+                {{ (totals.calories | round(0) | int) if totals is defined else 0 }}
+              </text>
+              <text x="80" y="95" text-anchor="middle" font-size="12" fill="#666">
+                / {{ user.calorie_goal or 2000 }} cal
+              </text>
+            </svg>
+          </div>
+          <div class="progress mb-2" style="height:18px;">
+            <div class="progress-bar bg-danger" role="progressbar"
+                 style="width: {{ ((totals.calories / (user.calorie_goal or 2000) * 100) | round(1)) if totals is defined and user is defined else 0 }}%;"
+                 aria-valuenow="{{ totals.calories if totals is defined else 0 }}"
+                 aria-valuemin="0"
+                 aria-valuemax="{{ user.calorie_goal or 2000 }}">
+              {{ ((totals.calories / (user.calorie_goal or 2000) * 100) | round(1)) if totals is defined and user is defined else 0 }}%
+            </div>
+          </div>
+          <p class="text-muted mb-0">
+            {% if user is defined and totals is defined %}
+              {% set remaining = (user.calorie_goal or 2000) - totals.calories %}
+              {% if remaining > 0 %}
+                <span class="text-success">{{ remaining | round(0) | int }} calories remaining</span>
+              {% else %}
+                <span class="text-warning">{{ (remaining * -1) | round(0) | int }} calories over goal</span>
+              {% endif %}
+            {% endif %}
+          </p>
+        </div>
+      </div>
+
+      <div class="row mb-4">
+        <div class="col-md-4 mb-3">
+          <div class="card macro-card protein shadow-sm">
+            <div class="card-body">
+              <h6 class="text-muted mb-2">PROTEIN</h6>
+              <h3 class="mb-1">{{ totals.protein | round(1) if totals is defined else 0 }}g</h3>
+              <small class="text-muted">{{ ((totals.protein * 4) | round(0) | int) if totals is defined else 0 }} cal</small>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4 mb-3">
+          <div class="card macro-card carbs shadow-sm">
+            <div class="card-body">
+              <h6 class="text-muted mb-2">CARBS</h6>
+              <h3 class="mb-1">{{ totals.carbs | round(1) if totals is defined else 0 }}g</h3>
+              <small class="text-muted">{{ ((totals.carbs * 4) | round(0) | int) if totals is defined else 0 }} cal</small>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4 mb-3">
+          <div class="card macro-card fats shadow-sm">
+            <div class="card-body">
+              <h6 class="text-muted mb-2">FATS</h6>
+              <h3 class="mb-1">{{ totals.fat | round(1) if totals is defined else 0 }}g</h3>
+              <small class="text-muted">{{ ((totals.fat * 9) | round(0) | int) if totals is defined else 0 }} cal</small>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Food logging form (matches member.route expectations) -->
+      <h4>Log Food</h4>
+      <form method="POST" id="foodForm" class="mb-3" action="/member/dashboard">
+        <input type="hidden" name="action" value="add_food">
+        <input type="hidden" name="date" id="form_date" value="{{ (selected_date.strftime('%Y-%m-%d') if selected_date is defined else (today.strftime('%Y-%m-%d') if today is defined else '')) }}">
+        <div class="input-group position-relative">
+          <input type="text" id="food_search" name="food_search" class="form-control" placeholder="Search or enter food..." autocomplete="off" required value="{{ request.form.get('food_search','') }}">
+          <!-- quantity uses name 'quantity' so the route sees it -->
+          <input type="number" step="0.01" id="log_quantity" name="quantity" class="form-control" placeholder="Quantity (g)" value="{{ request.form.get('quantity','') or 100 }}" required>
+          <select id="log_unit" name="unit" class="form-select" style="max-width:110px;">
+            <option value="g">g</option>
+            <option value="kg">kg</option>
+            <option value="oz">oz</option>
+            <option value="lb">lb</option>
+            <option value="tsp">tsp</option>
+            <option value="tbsp">tbsp</option>
+            <option value="cup">cup</option>
+          </select>
+          <input type="hidden" name="food_id" id="food_id">
           <button type="submit" class="btn btn-primary">Add</button>
         </div>
+        <ul id="foodSuggestions" class="list-group position-absolute w-100 shadow-sm" style="z-index:1000; display:none;"></ul>
       </form>
 
-      <!-- Display Logged Foods -->
+      <!-- Today's table (server-side rendering) -->
+      <h5 class="mt-3">Foods — {{ (selected_date.strftime('%A, %B %d, %Y') if selected_date is defined else (today.strftime('%A, %B %d, %Y') if today is defined else '')) }}</h5>
       {% if user_food_logs %}
-      <table class="table table-striped">
-        <thead>
-          <tr>
-            <th>Food</th>
-            <th>Quantity (g)</th>
-            <th>Calories</th>
-            <th>Protein</th>
-            <th>Carbs</th>
-            <th>Fat</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for log in user_food_logs %}
-          <tr>
-            <td>{{ log.food.name }}</td>
-            <td>{{ log.quantity }}</td>
-            <td>{{ (log.quantity / 100) * log.food.calories | round(1) }}</td>
-            <td>{{ (log.quantity / 100) * log.food.protein | round(1) }}</td>
-            <td>{{ (log.quantity / 100) * log.food.carbs | round(1) }}</td>
-            <td>{{ (log.quantity / 100) * log.food.fat | round(1) }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+        <div class="table-responsive">
+          <table class="table table-sm table-striped">
+            <thead>
+              <tr><th>Food</th><th>Qty</th><th>Calories</th><th>Protein</th><th>Carbs</th><th>Fat</th><th></th></tr>
+            </thead>
+            <tbody>
+              {% for log in user_food_logs %}
+                <tr>
+                  <td>{{ log.food.name if log.food is defined else '-' }}</td>
+                  <td>{{ log.quantity or '-' }} {{ log.unit if log.unit is defined else 'g' }}</td>
+                  <td>{{ (((log.quantity or 0) / 100) * (log.food.calories or 0)) | round(1) }}</td>
+                  <td>{{ (((log.quantity or 0) / 100) * (log.food.protein or 0)) | round(1) }}</td>
+                  <td>{{ (((log.quantity or 0) / 100) * (log.food.carbs or 0)) | round(1) }}</td>
+                  <td>{{ (((log.quantity or 0) / 100) * (log.food.fat or 0)) | round(1) }}</td>
+                  <td>
+                    <form method="POST" action="/member/delete_food_log/{{ log.id }}" style="display:inline;">
+                      <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Remove {{ log.food.name }}?')">✕</button>
+                    </form>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
 
-      <!-- Display Totals -->
-      <div class="mt-3">
-        <h5>Totals for today:</h5>
-        <p>
+        <div class="mt-2">
+          <strong>Totals:</strong>
           Calories: {{ totals.calories | round(1) }} kcal |
           Protein: {{ totals.protein | round(1) }} g |
           Carbs: {{ totals.carbs | round(1) }} g |
           Fat: {{ totals.fat | round(1) }} g
-        </p>
-      </div>
+        </div>
       {% else %}
-      <p>No foods logged yet today.</p>
+        <p class="text-muted">No foods logged for selected date.</p>
       {% endif %}
+
+      <!-- Weight & Exercise forms -->
+      <div class="row mt-4">
+        <div class="col-md-6">
+          <div class="card mb-3">
+            <div class="card-body">
+              <h6 class="card-title">Log Weight</h6>
+              <form method="POST" action="/member/dashboard" class="d-flex gap-2 align-items-center">
+                <input type="hidden" name="action" value="add_weight">
+                <input type="hidden" name="date" value="{{ (selected_date.strftime('%Y-%m-%d') if selected_date is defined else (today.strftime('%Y-%m-%d') if today is defined else '')) }}">
+                <input name="weight" type="number" step="0.1" class="form-control" placeholder="kg" style="max-width:140px;">
+                <button class="btn btn-success btn-sm" type="submit">Save</button>
+              </form>
+
+              <div class="mt-3">
+                <small class="text-muted">Recent weight preview</small>
+                {% if weight_history %}
+                  {% set ns = namespace(min=9999.0, max=-9999.0) %}
+                  {% for p in weight_history %}{% set w = p[1] %}{% if w < ns.min %}{% set ns.min = w %}{% endif %}{% if w > ns.max %}{% set ns.max = w %}{% endif %}{% endfor %}
+                  <div class="d-flex align-items-end" style="height:48px; gap:4px;">
+                    {% for p in weight_history %}
+                      {% set w = p[1] %}
+                      {% if ns.max > ns.min %}
+                        {% set pct = ((w - ns.min) / (ns.max - ns.min) * 100) | round(0) %}
+                      {% else %}
+                        {% set pct = 50 %}
+                      {% endif %}
+                      <div title="{{ p[0] }}: {{ w }} kg" style="width:6px; background:#0d6efd; height:{{ pct }}%; border-radius:2px;"></div>
+                    {% endfor %}
+                  </div>
+                {% else %}
+                  <div class="text-muted small">No weight history</div>
+                {% endif %}
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <div class="col-md-6">
+          <div class="card mb-3">
+            <div class="card-body">
+              <h6 class="card-title">Log Exercise</h6>
+              <form method="POST" action="/member/dashboard" class="mb-2">
+                <input type="hidden" name="action" value="add_exercise">
+                <input type="hidden" name="date" value="{{ (selected_date.strftime('%Y-%m-%d') if selected_date is defined else (today.strftime('%Y-%m-%d') if today is defined else '')) }}">
+                <div class="mb-2"><input name="exercise_name" type="text" class="form-control" placeholder="Exercise name"></div>
+                <div class="d-flex gap-2">
+                  <input name="reps" type="number" class="form-control" placeholder="Reps" style="max-width:120px;">
+                  <input name="notes" type="text" class="form-control" placeholder="Notes (optional)">
+                </div>
+                <div class="text-end mt-2"><button type="submit" class="btn btn-success btn-sm">Add Exercise</button></div>
+              </form>
+
+              <div class="mt-2">
+                <h6 class="mb-1">Exercises on {{ (selected_date.strftime('%Y-%m-%d') if selected_date is defined else '') }}</h6>
+                {% set exercises_today = [] %}
+                {% if calendar_weeks is defined %}
+                  {% for week in calendar_weeks %}
+                    {% for d in week %}
+                      {% if d.iso == (selected_date.strftime('%Y-%m-%d') if selected_date is defined else '') %}
+                        {% set exercises_today = (d.data.exercises if d.data and d.data.exercises else []) %}
+                      {% endif %}
+                    {% endfor %}
+                  {% endfor %}
+                {% endif %}
+                {% if exercises_today and exercises_today|length %}
+                  <ul class="mb-0">{% for ex in exercises_today %}<li>{{ ex.name }}{% if ex.reps %} — {{ ex.reps }} reps{% endif %}{% if ex.notes %} — {{ ex.notes }}{% endif %}</li>{% endfor %}</ul>
+                {% else %}
+                  <div class="text-muted small">No exercises logged.</div>
+                {% endif %}
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Calendar: compact previews inside boxes -->
+      {% if cal_month is defined and cal_year is defined and calendar_weeks is defined %}
+      <div class="card mt-4">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            {% set prev_month = cal_month - 1 %}
+            {% set prev_year = cal_year %}
+            {% if prev_month < 1 %}{% set prev_month = 12 %}{% set prev_year = cal_year - 1 %}{% endif %}
+            {% set next_month = cal_month + 1 %}
+            {% set next_year = cal_year %}
+            {% if next_month > 12 %}{% set next_month = 1 %}{% set next_year = cal_year + 1 %}{% endif %}
+            <div>
+              <a href="/member/dashboard?year={{ prev_year }}&month={{ prev_month }}" class="btn btn-sm btn-outline-primary">&lt;</a>
+              <a href="/member/dashboard?year={{ next_year }}&month={{ next_month }}" class="btn btn-sm btn-outline-primary ms-1">&gt;</a>
+            </div>
+            <h5 class="mb-0">{{ cal_year }} — {{ "%02d"|format(cal_month) }}</h5>
+            <div></div>
+          </div>
+
+          <div class="container-fluid">
+            <div class="row row-cols-7 text-center fw-bold border-bottom pb-2">
+              <div class="col">Sun</div><div class="col">Mon</div><div class="col">Tue</div>
+              <div class="col">Wed</div><div class="col">Thu</div><div class="col">Fri</div><div class="col">Sat</div>
+            </div>
+
+            {% for week in calendar_weeks %}
+              <div class="row row-cols-7 g-2 mt-2">
+                {% for day in week %}
+                  <div class="col">
+                    {% if day.day %}
+                      <a href="/member/dashboard?year={{ cal_year }}&month={{ cal_month }}&day={{ day.iso }}" class="text-decoration-none text-reset">
+                        <div class="p-2 h-100 border {% if not day.in_month %}text-muted bg-light{% endif %}" style="min-height:110px;">
+                          <div class="d-flex justify-content-between align-items-start mb-1">
+                            <small class="text-muted">{{ day.day }}</small>
+                            <div>
+                              {% if day.data and day.data.weight is defined and day.data.weight is not none %}<span class="badge bg-info text-dark me-1">W</span>{% endif %}
+                              {% if day.data and day.data.food %}<span class="badge bg-success me-1">F</span>{% endif %}
+                              {% if day.data and day.data.exercises and day.data.exercises|length %}<span class="badge bg-warning text-dark me-1">E</span>{% endif %}
+                            </div>
+                          </div>
+
+                          <div class="small" style="line-height:1.1;">
+                            <div><strong>Weight:</strong> {{ day.data.weight if day.data and day.data.weight is not none else '—' }}</div>
+                            <div><strong>Food:</strong>
+                              {% if day.data and day.data.food and day.data.food.calories is defined %}{{ day.data.food.calories }} kcal{% else %}—{% endif %}
+                            </div>
+                            <div><strong>Ex:</strong> {% if day.data and day.data.exercises %}{{ day.data.exercises|length }}{% else %}—{% endif %}</div>
+                          </div>
+
+                        </div>
+                      </a>
+                    {% else %}
+                      <div class="p-2 h-100 border bg-light" style="min-height:110px;"></div>
+                    {% endif %}
+                  </div>
+                {% endfor %}
+              </div>
+            {% endfor %}
+          </div>
+
+          <!-- ...existing code... -->
+          <!-- Selected-day details -->
+          <div class="text-center mt-3">
+            <div class="small text-muted">Selected: {{ (selected_date.strftime('%A, %B %d, %Y') if selected_date is defined else (today.strftime('%A, %B %d, %Y') if today is defined else '')) }}</div>
+            <div class="mt-2 border rounded p-3 bg-light text-start">
+              <div><strong>Weight:</strong>
+                {{ selected_weight if selected_weight is not none else 'No entry' }}
+              </div>
+
+              <div><strong>Food:</strong>
+                {% if totals is defined and totals.calories and totals.calories > 0 %}
+                  {{ totals.calories | round(1) }} kcal
+                {% else %}
+                  No entry
+                {% endif %}
+              </div>
+
+              <div><strong>Exercises:</strong>
+                {% if selected_exercises and selected_exercises|length %}
+                  <ul class="mb-0">
+                    {% for ex in selected_exercises %}
+                      <li>{{ ex.name }}{% if ex.reps %} — {{ ex.reps }} reps{% endif %}{% if ex.notes %} — {{ ex.notes }}{% endif %}</li>
+                    {% endfor %}
+                  </ul>
+                {% else %}
+                  No entry
+                {% endif %}
+              </div>
+            </div>
+          </div>
+          <!-- end calendar -->
++          {% endif %}
+        </div>
+      </div>
     </div>
   </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// lightweight search UI; if your /member/search-foods or /member/get-measures endpoints don't exist, this will fail silently.
+// it still fills food_search and quantity before submit so server-side add_food works.
+const searchInput = document.getElementById("food_search");
+const suggestionsBox = document.getElementById("foodSuggestions");
+const foodIdInput = document.getElementById("food_id");
+const unitSelect = document.getElementById("log_unit");
+const quantityInput = document.getElementById("log_quantity");
+const form = document.getElementById("foodForm");
+
+async function fetchFoods() {
+  const q = (searchInput.value || "").trim();
+  if (q.length < 2) { suggestionsBox.style.display = "none"; return; }
+  try {
+    const res = await fetch(`/member/search-foods?q=${encodeURIComponent(q)}&unit=${unitSelect.value}&quantity=${quantityInput.value}`);
+    const data = await res.json();
+    suggestionsBox.innerHTML = "";
+    if (!data.results || !data.results.length) { suggestionsBox.style.display = "none"; return; }
+    data.results.forEach(food => {
+      const item = document.createElement("li");
+      item.className = "list-group-item list-group-item-action";
+      item.dataset.id = food.id;
+      item.innerHTML = `<div><strong>${food.name}</strong></div><small>${food.calories} kcal / ${food.serving_size || 100}${food.serving_unit || 'g'}</small>`;
+      item.onclick = (e) => {
+        e.preventDefault();
+        searchInput.value = food.name;
+        foodIdInput.value = food.id;
+        suggestionsBox.style.display = "none";
+      };
+      suggestionsBox.appendChild(item);
+    });
+    suggestionsBox.style.display = "block";
+  } catch (err) {
+    suggestionsBox.style.display = "none";
+  }
+}
+
+searchInput && searchInput.addEventListener("input", fetchFoods);
+
+// auto-fill food_id if top suggestion exists on submit
+form && form.addEventListener("submit", (e) => {
+  // nothing special needed — server expects food_search and quantity.
+  // ensure date input is set (if you used a JS date picker)
+  const dateInput = document.getElementById("form_date");
+  if (!dateInput || !dateInput.value) {
+    // leave blank, server will use today fallback
+  }
+});
+
+// hide suggestions clicking outside
+document.addEventListener("click", (e) => {
+  if (!searchInput.contains(e.target) && !suggestionsBox.contains(e.target)) suggestionsBox.style.display = "none";
+});
+</script>
 </body>
 </html>

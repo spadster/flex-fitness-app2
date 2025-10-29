@@ -56,3 +56,14 @@ class Progress(db.Model):
     date = db.Column(db.DateTime, nullable=False)
     weight = db.Column(db.Float, nullable=True)
     notes = db.Column(db.Text, nullable=True)
+
+class Exercise(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    name = db.Column(db.String(200), nullable=False)
+    reps = db.Column(db.Integer, nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    # support date/log_date naming used by routes
+    date = db.Column(db.DateTime, nullable=True)
+    log_date = db.Column(db.Date, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
