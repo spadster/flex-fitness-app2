@@ -43,18 +43,6 @@ class Food(db.Model):
     serving_unit = db.Column(db.String(50))
     grams_per_unit = db.Column(db.Float)
 
-UNIT_TO_GRAMS = {
-    "g": 1,
-    "kg": 1000,
-    "oz": 28.35,
-    "lb": 453.592,
-    "tsp": 4.2,
-    "tbsp": 14.3,
-    "cup": 240
-}
-from datetime import datetime
-from app import db
-
 # Make sure this is defined somewhere
 UNIT_TO_GRAMS = {
     "g": 1,
@@ -77,32 +65,48 @@ class UserFoodLog(db.Model):
 
     food = db.relationship("Food")
 
-    @property
-    def scaled(self):
-        unit = self.unit.lower() if self.unit else "g"
+    def quantity_in_grams(self):
+        """Convert the logged quantity to grams based on the unit."""
+        quantity = self.quantity or 0
+        unit = (self.unit or "g").lower()
 
-        # Try to find a food-specific measure
+        if unit == "g":
+            return quantity
+        
         measure = FoodMeasure.query.filter_by(food_id=self.food_id, measure_name=unit).first()
         if measure:
-            grams_per_unit = measure.grams
-        else:
-            grams_per_unit = UNIT_TO_GRAMS.get(unit, 1)  # fallback to generic
-
-        quantity_in_grams = self.quantity * grams_per_unit
-
-        serving_grams = self.food.serving_size or 100
-        if serving_grams == 0:
-            serving_grams = 100
-
+            return quantity * measure.grams
+        
+        grams_per_unit = UNIT_TO_GRAMS.get(unit)
+        if grams_per_unit:
+            return quantity * grams_per_unit
+        
+        return quantity  # Fallback to original quantity if unit is unknown
+    
+    @property
+    def scaled(self):
+        quantity_in_grams = self.quantity_in_grams()
+        serving_grams = self.food.grams_per_unit or 100
         factor = quantity_in_grams / serving_grams
 
-        return {
-            "calories": round((self.food.calories or 0) * factor, 1),
-            "protein": round((self.food.protein_g or 0) * factor, 1),
-            "carbs": round((self.food.carbs_g or 0) * factor, 1),
-            "fats": round((self.food.fats_g or 0) * factor, 1)
-        }
+        base_protein = self.food.protein_g or 0
+        base_carbs = self.food.carbs_g or 0
+        base_fats = self.food.fats_g or 0
+        base_calories = self.food.calories or 0
 
+        macro_calories = (base_protein * 4) + (base_carbs * 4) + (base_fats * 9)
+        calories = base_calories
+        if base_calories and macro_calories:
+            ratio = base_calories / macro_calories
+            if ratio > 2 or ratio < 0.5:
+                calories = macro_calories
+
+        return {
+            "calories": round(calories * factor, 1),
+            "protein": round(base_protein * factor, 1),
+            "carbs": round(base_carbs * factor, 1),
+            "fats": round(base_fats * factor, 1)
+        }
 class Progress(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)

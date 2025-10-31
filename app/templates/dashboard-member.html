@@ -229,7 +229,7 @@
           </thead>
           <tbody>
             {% for log in user_food_logs %}
-            <tr>
+            <tr id="log-{{ log.id }}">
               <td><strong>{{ log.food.name }}</strong></td>
               <td>{{ log.quantity }} {{ log.unit }}</td>
               <td>{{ log.scaled.calories | round(1) }}</td>
@@ -237,10 +237,8 @@
               <td>{{ log.scaled.carbs | round(1) }}g</td>
               <td>{{ log.scaled.fats | round(1) }}g</td>
               <td>
-                <form method="POST" action="{{ url_for('member.delete_food_log', log_id=log.id) }}" style="display: inline;">
-                  <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Remove {{ log.food.name }}?')">
-                    ✕
-                  </button>
+                <form onsubmit="event.preventDefault(); deleteLog({{ log.id }});" style="display:inline;">
+                  <button type="submit" class="btn btn-sm btn-danger">✕</button>
                 </form>
               </td>
             </tr>
@@ -339,5 +337,70 @@ document.addEventListener("click", e => {
   }
 });
 </script>
+<script>
+async function deleteLog(logId) {
+  try {
+    const res = await fetch(`/member/delete-food-log/${logId}`, { method: "POST" });
+    const data = await res.json();
+
+    if (data.status === "success") {
+      const row = document.getElementById(`log-${logId}`);
+      if (row) row.remove();
+      showMessage(data.message, "success");
+      await updateTotals();  // 👈 update the macros live
+    } else {
+      showMessage(data.message || "Error deleting log.", "danger");
+    }
+  } catch (err) {
+    console.error(err);
+    showMessage("Error connecting to server.", "danger");
+  }
+}
+
+</script>
+<script>
+async function updateTotals() {
+  try {
+    const res = await fetch("/member/get-totals");
+    const data = await res.json();
+
+    // Update the macro cards
+    document.querySelector(".macro-card.protein h3").textContent = data.protein.toFixed(1) + "g";
+    document.querySelector(".macro-card.carbs h3").textContent = data.carbs.toFixed(1) + "g";
+    document.querySelector(".macro-card.fats h3").textContent = data.fats.toFixed(1) + "g";
+
+    // Update the progress bar + calorie text
+    const goal = parseFloat("{{ user.calorie_goal or 2000 }}");
+    const percent = Math.min((data.calories / goal) * 100, 100).toFixed(1);
+    document.querySelector(".progress-bar").style.width = percent + "%";
+    document.querySelector(".progress-bar").textContent = percent + "%";
+    document.querySelector("text[text-anchor='middle'][font-size='32']").textContent = Math.round(data.calories);
+
+    // Remaining calories text
+    const remaining = goal - data.calories;
+    const remainElem = document.querySelector(".text-muted.mb-0 span");
+    if (remaining > 0) {
+      remainElem.className = "text-success";
+      remainElem.textContent = `${Math.round(remaining)} calories remaining`;
+    } else {
+      remainElem.className = "text-warning";
+      remainElem.textContent = `${Math.round(-remaining)} calories over goal`;
+    }
+  } catch (err) {
+    console.error("Error updating totals:", err);
+  }
+}
+</script>
+<script>
+function showMessage(msg, type) {
+  const alert = document.createElement("div");
+  alert.className = `alert alert-${type} text-center fixed-top`;
+  alert.style.zIndex = "2000";
+  alert.textContent = msg;
+  document.body.appendChild(alert);
+  setTimeout(() => alert.remove(), 2000);
+}
+</script>
+
 </body>
 </html>

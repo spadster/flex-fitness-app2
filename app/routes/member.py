@@ -125,6 +125,36 @@ UNIT_TO_GRAMS = {
     "cup": 240
 }
 
+def scaled_macros(food: Food, quantity_in_grams: float):
+    serving_grams = food.serving_size or 100
+    if not serving_grams:
+        serving_grams = 100
+
+    factor = quantity_in_grams / serving_grams if serving_grams else 0
+
+    base_protein = food.protein_g or 0
+    base_carbs = food.carbs_g or 0
+    base_fats = food.fats_g or 0
+    base_calories = food.calories or 0
+
+    macro_calories = (base_protein * 4) + (base_carbs * 4) + (base_fats * 9)
+    calories = base_calories
+
+    if macro_calories:
+        if not base_calories:
+            calories = macro_calories
+        else:
+            ratio = base_calories / macro_calories if macro_calories else 0
+            if ratio > 2 or ratio < 0.5:
+                calories = macro_calories
+
+    return {
+        "calories": round(calories * factor, 1),
+        "protein": round(base_protein * factor, 1),
+        "carbs": round(base_carbs * factor, 1),
+        "fats": round(base_fats * factor, 1),
+    }
+
 def scale_nutrients(food_id, quantity, unit):
     measure = FoodMeasure.query.filter_by(food_id=food_id, measure_name=unit).first()
     if measure:
@@ -134,13 +164,13 @@ def scale_nutrients(food_id, quantity, unit):
         grams = quantity
 
     food = Food.query.get(food_id)
-    factor = grams / 100  # assuming macros stored per 100g
+    scaled = scaled_macros(food, grams)  # assuming macros stored per 100g
 
     return {
-        "calories": round(food.calories * factor, 1),
-        "protein_g": round(food.protein_g * factor, 1),
-        "carbs": round(food.carbs_g * factor, 1),
-        "fats": round(food.fats_g * factor, 1)
+        "calories": round(scaled["calories"], 1),
+        "protein_g": round(scaled["protein"], 1),
+        "carbs": round(scaled["carbs"], 1),
+        "fats": round(scaled["fats"], 1)
     }
 
 
@@ -173,16 +203,15 @@ def search_foods():
                 grams_per_unit = measure.grams
 
             quantity_in_grams = quantity * grams_per_unit
-            serving_grams = food.serving_size or 100
-            factor = quantity_in_grams / serving_grams
+            scaled = scaled_macros(food, quantity_in_grams) 
 
             results.append({
                 "id": food.id,
                 "name": food.name,
-                "calories": round((food.calories or 0) * factor, 1),
-                "protein_g": round((food.protein_g or 0) * factor, 1),
-                "carbs": round((food.carbs_g or 0) * factor, 1),
-                "fats": round((food.fats_g or 0) * factor, 1),
+                "calories": round(scaled["calories"], 1),
+                "protein_g": round(scaled["protein"], 1),
+                "carbs": round(scaled["carbs"], 1),
+                "fats": round(scaled["fats"], 1),
                 "serving_size": food.serving_size,
                 "serving_unit": food.serving_unit
             })
@@ -315,25 +344,14 @@ def get_measures(food_id):
 def delete_food_log(log_id):
     user_id = session.get('user_id')
     if not user_id:
-        flash("Please log in first.", "danger")
-        return redirect(url_for("auth.login_member"))
-    
-    # Find the log entry
+        return jsonify({"status": "error", "message": "Please log in first."}), 403
+
     log = UserFoodLog.query.get(log_id)
-    
-    if not log:
-        flash("Food log not found.", "danger")
-        return redirect(url_for("member.dashboard"))
-    
-    # Make sure this log belongs to the current user
-    if log.user_id != user_id:
-        flash("You don't have permission to delete this log.", "danger")
-        return redirect(url_for("member.dashboard"))
-    
-    # Delete the log
+    if not log or log.user_id != user_id:
+        return jsonify({"status": "error", "message": "Log not found or unauthorized."}), 404
+
     food_name = log.food.name
     db.session.delete(log)
     db.session.commit()
-    
-    flash(f"Removed {food_name} from your log.", "success")
-    return redirect(url_for("member.dashboard"))
+
+    return jsonify({"status": "success", "message": f"Removed {food_name} from your log."})
