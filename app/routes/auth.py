@@ -16,7 +16,7 @@ def login_trainer():
         if user and check_password_hash(user.password_hash, password):
             session["user_id"] = user.id
             session["role"] = user.role
-            return redirect(url_for("trainer.dashboard"))
+            return redirect(url_for("trainer.dashboard_trainer"))
         flash("Invalid email or password")
     return render_template("login-trainer.html")
 

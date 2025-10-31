@@ -355,3 +355,13 @@ def delete_food_log(log_id):
     db.session.commit()
 
     return jsonify({"status": "success", "message": f"Removed {food_name} from your log."})
+
+
+# -----------------------------
+# Log out
+# -----------------------------
+@member_bp.route("/logout")
+def logout():
+    session.clear()  # Clears the entire session
+    flash("You have been logged out successfully.", "success")
+    return redirect(url_for("auth.login_member"))

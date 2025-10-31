@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, session
+from flask import Blueprint, render_template, session, redirect, flash, url_for
 from app import db
 from app.models import User
 from flask_login import login_required, current_user
@@ -14,7 +14,7 @@ def view_clients():
     # Only fetch members assigned to this trainer
     clients = User.query.filter_by(trainer_id=trainer_id, role='member').all()
 
-    return render_template('display-trainer.html', clients=clients)
+    return render_template('dashboard-trainer.html', clients=clients)
 
 @trainer_bp.route('/dashboard-trainer')
 @login_required
@@ -22,3 +22,12 @@ def dashboard_trainer():
     if current_user.role != 'trainer':
         return "Access denied", 403
     return render_template('dashboard-trainer.html', trainer=current_user)
+
+# -----------------------------
+# Log out
+# -----------------------------
+@trainer_bp.route("/logout")
+def logout():
+    session.clear()  # Clears the entire session
+    flash("You have been logged out successfully.", "success")
+    return redirect(url_for("auth.login_member"))
