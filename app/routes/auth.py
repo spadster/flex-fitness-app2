@@ -1,4 +1,5 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session
+from flask_login import login_user, logout_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from app import db
 from app.models import User  # import models here, not __init__.py
@@ -6,34 +7,55 @@ from app.models import User  # import models here, not __init__.py
 # Define the blueprint at the top level
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
 
-# Trainer login
+
+# -----------------------------
+# Trainer Login
+# -----------------------------
 @auth_bp.route("/login-trainer", methods=["GET", "POST"])
 def login_trainer():
     if request.method == "POST":
         email = request.form.get("email", "").strip()
         password = request.form.get("password", "").strip()
+
         user = User.query.filter_by(email=email, role="trainer").first()
+
         if user and check_password_hash(user.password_hash, password):
+            login_user(user)  # Flask-Login handles session
             session["user_id"] = user.id
             session["role"] = user.role
+            flash(f"Welcome, Trainer {user.first_name}!", "success")
             return redirect(url_for("trainer.dashboard_trainer"))
-        flash("Invalid email or password")
+
+        flash("Invalid email or password.", "danger")
+
     return render_template("login-trainer.html")
 
 
-# Member login
+# -----------------------------
+# Member Login
+# -----------------------------
 @auth_bp.route("/login-member", methods=["GET", "POST"])
 def login_member():
     if request.method == "POST":
         email = request.form.get("email", "").strip()
         password = request.form.get("password", "").strip()
+
         user = User.query.filter_by(email=email).first()
+
         if user and check_password_hash(user.password_hash, password):
+            login_user(user)  # use Flask-Login
             session["user_id"] = user.id
             session["role"] = user.role
+            flash(f"Welcome back, {user.first_name}!", "success")
+
+            if user.role == "trainer":
+                return redirect(url_for("trainer.dashboard_trainer"))
             return redirect(url_for("member.dashboard"))
-        flash("Invalid email or password")
+
+        flash("Invalid email or password.", "danger")
+
     return render_template("login-member.html")
+
 
 
 @auth_bp.route("/register", methods=["GET", "POST"])
@@ -81,6 +103,7 @@ def register():
 # Logout
 @auth_bp.route("/logout")
 def logout():
-    session.clear()  # removes all session data
+    logout_user()
+    session.clear()
     flash("You have been logged out.")
     return redirect(url_for("main.home"))  # redirect to homepage
