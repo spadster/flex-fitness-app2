@@ -1,7 +1,8 @@
 from flask import Blueprint, render_template, session, flash, redirect, request, url_for, jsonify
 from app import db
 from app.models import User, Progress, Food, UserFoodLog, FoodMeasure
-from datetime import datetime
+from datetime import datetime, date
+import calendar as _calendar
 
 member_bp = Blueprint('member', __name__, url_prefix='/member')
 
@@ -93,7 +94,7 @@ def dashboard():
             flash("Please enter a food name to search.", "warning")
 
     # -----------------------------
-    # Fetch today's logs + compute totals
+    # Fetch today's logs + compute totals (default view)
     # -----------------------------
     user_food_logs = UserFoodLog.query.filter_by(user_id=user.id, log_date=today).all()
     totals = {"calories": 0, "protein": 0, "carbs": 0, "fat": 0}
@@ -105,13 +106,230 @@ def dashboard():
         totals["carbs"] += scaled["carbs"]
         totals["fat"] += scaled["fats"]
 
+    # ----------
+    # Calendar support (server-rendered, no JS required)
+    # If the client requested view=calendar we will compute calendar_weeks
+    # and selected_date so the template can render a full month with
+    # per-day weight and food calorie summaries.
+    # ----------
+    view = request.args.get('view')
+    cal_year = request.args.get('year', type=int)
+    cal_month = request.args.get('month', type=int)
+    sel_day = request.args.get('day')
+
+    selected_date = None
+    calendar_weeks = None
+    selected_weight = None
+    selected_food_calories = None
+
+    if view == 'calendar':
+        # default to current month if not provided
+        if not cal_year or not cal_month:
+            cal_year = today.year
+            cal_month = today.month
+
+        # parse selected day if provided (ISO yyyy-mm-dd) else default to today
+        try:
+            selected_date = datetime.strptime(sel_day, "%Y-%m-%d").date() if sel_day else today
+        except Exception:
+            selected_date = today
+
+        def _build_calendar_weeks(year, month, user_obj):
+            weeks = []
+            cal = _calendar.Calendar(firstweekday=6)  # start on Sunday
+            for week in cal.monthdatescalendar(year, month):
+                week_list = []
+                for d in week:
+                    in_month = (d.month == month)
+                    if not in_month:
+                        week_list.append({'iso': '', 'day': '', 'in_month': False, 'data': None})
+                        continue
+
+                    iso = d.strftime('%Y-%m-%d')
+
+                    # weight: pick most-recent Progress/WeightLog entry for that date
+                    weight_val = None
+                    try:
+                        # compute per-macro totals for selected day
+                        rows = Progress.query.filter_by(user_id=user_obj.id).all()
+                        day_rows = []
+                        for r in rows:
+                            dt = getattr(r, 'date', None) or getattr(r, 'log_date', None)
+                            if dt is None:
+                                continue
+                            try:
+                                if isinstance(dt, datetime):
+                                    match = (dt.date() == d)
+                                else:
+                                    match = (dt == d)
+                            except Exception:
+                                match = False
+                            if match:
+                                day_rows.append(r)
+                        if day_rows:
+                            def _ord_key(x):
+                                return getattr(x, 'created_at', None) or getattr(x, 'id', 0)
+                            weight_entry = max(day_rows, key=_ord_key)
+                            weight_val = float(getattr(weight_entry, 'weight')) if getattr(weight_entry, 'weight', None) is not None else None
+                    except Exception:
+                        weight_val = None
+
+                    # food calories: sum UserFoodLog.quantity (grams) scaled by food.calories per serving
+                    food_calories = None
+                    try:
+                        # robust per-row date matching (support Date and DateTime columns)
+                        all_fls = UserFoodLog.query.filter_by(user_id=user_obj.id).all()
+                        fls = []
+                        for f in all_fls:
+                            dt = getattr(f, 'date', None) or getattr(f, 'log_date', None)
+                            if dt is None:
+                                continue
+                            try:
+                                if isinstance(dt, datetime):
+                                    match = (dt.date() == d)
+                                else:
+                                    match = (dt == d)
+                            except Exception:
+                                match = False
+                            if match:
+                                fls.append(f)
+
+                        if fls:
+                            total_cals = 0.0
+                            total_protein = 0.0
+                            total_carbs = 0.0
+                            total_fats = 0.0
+                            for fl in fls:
+                                if getattr(fl, 'food', None):
+                                    serving = (getattr(fl.food, 'serving_size', 100) or 100)
+                                    qty_factor = (getattr(fl, 'quantity', 0) or 0) / serving
+                                    total_cals += qty_factor * (getattr(fl.food, 'calories', 0) or 0)
+                                    total_protein += qty_factor * (getattr(fl.food, 'protein_g', getattr(fl.food, 'protein', 0)) or 0)
+                                    total_carbs += qty_factor * (getattr(fl.food, 'carbs_g', getattr(fl.food, 'carbs', 0)) or 0)
+                                    total_fats += qty_factor * (getattr(fl.food, 'fats_g', getattr(fl.food, 'fat', 0)) or 0)
+                            food_calories = int(total_cals) if total_cals else None
+                            food_protein = round(total_protein, 1) if total_protein else None
+                            food_carbs = round(total_carbs, 1) if total_carbs else None
+                            food_fats = round(total_fats, 1) if total_fats else None
+                        else:
+                            food_calories = None
+                            food_protein = None
+                            food_carbs = None
+                            food_fats = None
+                    except Exception:
+                        food_calories = None
+                        items = []
+
+                    data = {
+                        'weight': weight_val,
+                        'food': {
+                            'calories': food_calories,
+                            'protein': food_protein if 'food_protein' in locals() else None,
+                            'carbs': food_carbs if 'food_carbs' in locals() else None,
+                            'fats': food_fats if 'food_fats' in locals() else None,
+                        } if (food_calories or (('food_protein' in locals() and food_protein) or ('food_carbs' in locals() and food_carbs) or ('food_fats' in locals() and food_fats))) else None,
+                    }
+
+                    week_list.append({'iso': iso, 'day': d.day, 'in_month': True, 'data': data})
+                weeks.append(week_list)
+            return weeks
+
+        calendar_weeks = _build_calendar_weeks(cal_year, cal_month, user)
+
+        # selected-day details: weight and totals for the selected_date
+        try:
+            # selected weight (robust match)
+            sel_weight = None
+            try:
+                rows = Progress.query.filter_by(user_id=user.id).all()
+                day_rows = []
+                for r in rows:
+                    dt = getattr(r, 'date', None) or getattr(r, 'log_date', None)
+                    if dt is None:
+                        continue
+                    try:
+                        if isinstance(dt, datetime):
+                            match = (dt.date() == selected_date)
+                        else:
+                            match = (dt == selected_date)
+                    except Exception:
+                        match = False
+                    if match:
+                        day_rows.append(r)
+                if day_rows:
+                    def _ord_key(x):
+                        return getattr(x, 'created_at', None) or getattr(x, 'id', 0)
+                    weight_entry = max(day_rows, key=_ord_key)
+                    sel_weight = float(getattr(weight_entry, 'weight')) if getattr(weight_entry, 'weight', None) is not None else None
+            except Exception:
+                sel_weight = None
+            selected_weight = sel_weight
+
+            # selected food totals (robust per-row matching)
+            try:
+                all_fls = UserFoodLog.query.filter_by(user_id=user.id).all()
+                tot = 0.0
+                total_protein = 0.0
+                total_carbs = 0.0
+                total_fats = 0.0
+                for fl in all_fls:
+                    dt = getattr(fl, 'date', None) or getattr(fl, 'log_date', None)
+                    if dt is None:
+                        continue
+                    try:
+                        if isinstance(dt, datetime):
+                            match = (dt.date() == selected_date)
+                        else:
+                            match = (dt == selected_date)
+                    except Exception:
+                        match = False
+                    if not match:
+                        continue
+                    if getattr(fl, 'food', None):
+                        serving = (getattr(fl.food, 'serving_size', 100) or 100)
+                        qty_factor = (getattr(fl, 'quantity', 0) or 0) / serving
+                        cals = qty_factor * (getattr(fl.food, 'calories', 0) or 0)
+                        prot = qty_factor * (getattr(fl.food, 'protein_g', getattr(fl.food, 'protein', 0)) or 0)
+                        carbs = qty_factor * (getattr(fl.food, 'carbs_g', getattr(fl.food, 'carbs', 0)) or 0)
+                        fats = qty_factor * (getattr(fl.food, 'fats_g', getattr(fl.food, 'fat', 0)) or 0)
+                        tot += cals
+                        total_protein += prot
+                        total_carbs += carbs
+                        total_fats += fats
+                selected_food_calories = int(tot) if tot else None
+                selected_food_protein = round(total_protein, 1) if total_protein else None
+                selected_food_carbs = round(total_carbs, 1) if total_carbs else None
+                selected_food_fats = round(total_fats, 1) if total_fats else None
+                selected_food_items = []
+            except Exception:
+                selected_food_calories = None
+                selected_food_items = []
+                selected_food_protein = None
+                selected_food_carbs = None
+                selected_food_fats = None
+        except Exception:
+            selected_weight = None
+            selected_food_calories = None
+
     return render_template(
         "dashboard-member.html",
         user=user,
         user_food_logs=user_food_logs,
         totals=totals,
         search_results=search_results,
-        UNIT_TO_GRAMS=UNIT_TO_GRAMS
+        UNIT_TO_GRAMS=UNIT_TO_GRAMS,
+        # calendar context (may be None when not requested)
+        view=view,
+        cal_year=cal_year,
+        cal_month=cal_month,
+        calendar_weeks=calendar_weeks,
+        selected_date=selected_date,
+        selected_weight=selected_weight,
+        selected_food_calories=selected_food_calories,
+        selected_food_protein=selected_food_protein if 'selected_food_protein' in locals() else None,
+        selected_food_carbs=selected_food_carbs if 'selected_food_carbs' in locals() else None,
+        selected_food_fats=selected_food_fats if 'selected_food_fats' in locals() else None,
+        selected_food_items=selected_food_items if 'selected_food_items' in locals() else []
     )
 
 

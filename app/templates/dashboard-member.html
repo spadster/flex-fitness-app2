@@ -50,14 +50,16 @@
     <!-- Sidebar -->
     <div class="col-md-3 mb-3">
       <div class="list-group">
-        <a href="{{ url_for('member.dashboard') }}" class="list-group-item list-group-item-action active">Dashboard</a>
+        <a href="{{ url_for('member.dashboard') }}" class="list-group-item list-group-item-action {% if view != 'calendar' %}active{% endif %}">Dashboard</a>
         <a href="{{ url_for('member.view_progress') }}" class="list-group-item list-group-item-action">View Progress</a>
         <a href="{{ url_for('member.exercise_plan') }}" class="list-group-item list-group-item-action">Exercise Plan</a>
+        <a href="{{ url_for('member.dashboard') }}?view=calendar" class="list-group-item list-group-item-action {% if view == 'calendar' %}active{% endif %}">Calendar</a>
       </div>
     </div>
 
     <!-- Main content -->
     <div class="col-md-9">
+      {% if view != 'calendar' %}
       <!-- Daily Calorie Goal with Progress Ring -->
       <div class="card mb-4 shadow-sm">
         <div class="card-body text-center">
@@ -249,6 +251,79 @@
       {% else %}
       <div class="alert alert-info">
         <i class="bi bi-info-circle"></i> No foods logged yet today. Start tracking your meals above!
+      </div>
+      {% endif %}
+      {% endif %}
+
+      <!-- Calendar view (server-rendered, no JS) -->
+      {% if view == 'calendar' and cal_month and cal_year and calendar_weeks %}
+      <div class="card mt-4">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            {% set prev_month = cal_month - 1 %}
+            {% set prev_year = cal_year %}
+            {% if prev_month < 1 %}{% set prev_month = 12 %}{% set prev_year = cal_year - 1 %}{% endif %}
+            {% set next_month = cal_month + 1 %}
+            {% set next_year = cal_year %}
+            {% if next_month > 12 %}{% set next_month = 1 %}{% set next_year = cal_year + 1 %}{% endif %}
+            <div>
+              <a href="{{ url_for('member.dashboard') }}?view=calendar&year={{ prev_year }}&month={{ prev_month }}" class="btn btn-sm btn-outline-primary">&lt;</a>
+              <a href="{{ url_for('member.dashboard') }}?view=calendar&year={{ next_year }}&month={{ next_month }}" class="btn btn-sm btn-outline-primary ms-1">&gt;</a>
+            </div>
+            <h5 class="mb-0">{{ cal_year }} — {{ "%02d"|format(cal_month) }}</h5>
+            <div></div>
+          </div>
+
+          <div class="container-fluid">
+            <div class="row row-cols-7 text-center fw-bold border-bottom pb-2">
+              <div class="col">Sun</div><div class="col">Mon</div><div class="col">Tue</div>
+              <div class="col">Wed</div><div class="col">Thu</div><div class="col">Fri</div><div class="col">Sat</div>
+            </div>
+
+            {% for week in calendar_weeks %}
+              <div class="row row-cols-7 g-2 mt-2">
+                {% for day in week %}
+                  <div class="col">
+                    {% if day.day %}
+                      <a href="{{ url_for('member.dashboard') }}?view=calendar&year={{ cal_year }}&month={{ cal_month }}&day={{ day.iso }}" class="text-decoration-none text-reset">
+                        <div class="p-2 h-100 border {% if not day.in_month %}text-muted bg-light{% endif %}" style="min-height:110px;">
+                          <div class="d-flex justify-content-between align-items-start mb-1">
+                            <small class="text-muted">{{ day.day }}</small>
+                            <div>
+                              {% if day.data and day.data.weight is defined and day.data.weight is not none %}<span class="badge bg-info text-dark me-1">W</span>{% endif %}
+                              {% if day.data and day.data.food %}<span class="badge bg-success me-1">F</span>{% endif %}
+                            </div>
+                          </div>
+
+                          <div class="small" style="line-height:1.1;">
+                            <div><strong>Weight:</strong> {{ day.data.weight if day.data and day.data.weight is not none else '—' }}</div>
+                          </div>
+
+                        </div>
+                      </a>
+                    {% else %}
+                      <div class="p-2 h-100 border bg-light" style="min-height:110px;"></div>
+                    {% endif %}
+                  </div>
+                {% endfor %}
+              </div>
+            {% endfor %}
+          </div>
+
+          <!-- selected-day details -->
+          <div class="text-center mt-3">
+            <div class="small text-muted">Selected: {{ (selected_date.strftime('%A, %B %d, %Y') if selected_date else '') }}</div>
+            <div class="mt-2 border rounded p-3 bg-light text-start">
+              <div><strong>Weight:</strong> {{ selected_weight if selected_weight is not none else 'No entry' }}</div>
+              <div><strong>Food:</strong>
+                <div>Calories: {% if selected_food_calories is not none %}{{ selected_food_calories }} kcal{% else %}No entry{% endif %}</div>
+                <div>Protein: {% if selected_food_protein is defined and selected_food_protein is not none %}{{ selected_food_protein }} g{% else %}—{% endif %}</div>
+                <div>Carbs: {% if selected_food_carbs is defined and selected_food_carbs is not none %}{{ selected_food_carbs }} g{% else %}—{% endif %}</div>
+                <div>Fats: {% if selected_food_fats is defined and selected_food_fats is not none %}{{ selected_food_fats }} g{% else %}—{% endif %}</div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
       {% endif %}
     </div>
