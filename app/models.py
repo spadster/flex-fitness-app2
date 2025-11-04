@@ -16,6 +16,16 @@ class User(db.Model, UserMixin):
     # 🔹 Link each member to a trainer
     trainer_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
 
+    # Profile details for nutrition goals
+    gender = db.Column(db.String(20), nullable=True)
+    age = db.Column(db.Integer, nullable=True)
+    height_cm = db.Column(db.Float, nullable=True)
+    activity_level = db.Column(db.Float, nullable=True)
+    maintenance_calories = db.Column(db.Float, nullable=True)
+    calorie_goal = db.Column(db.Float, nullable=True)
+    goal_weight_kg = db.Column(db.Float, nullable=True)
+    weekly_weight_change_lbs = db.Column(db.Float, nullable=True)
+    
     # 🔹 Self-referential relationship
     trainer = db.relationship(
         'User',

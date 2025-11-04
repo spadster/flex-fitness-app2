@@ -6,6 +6,14 @@ import calendar as _calendar
 
 member_bp = Blueprint('member', __name__, url_prefix='/member')
 
+ACTIVITY_LEVELS = [
+    (1.2, "Sedentary (1.2)"),
+    (1.375, "Lightly Active (1.375)"),
+    (1.55, "Moderately Active (1.55)"),
+    (1.725, "Very Active (1.725)"),
+    (1.9, "Extremely Active (1.9)")
+]
+
 # -----------------------------
 # Inject user into templates
 # -----------------------------
@@ -15,6 +23,88 @@ def inject_user():
     if user_id:
         return {"user": User.query.get(user_id)}
     return {}
+
+def _pounds_to_kg(value):
+    if value is None:
+        return None
+    try:
+        return float(value) * 0.45359237
+    except (TypeError, ValueError):
+        return None
+
+
+def _kg_to_pounds(value):
+    if value is None:
+        return None
+    try:
+        return float(value) / 0.45359237
+    except (TypeError, ValueError):
+        return None
+
+
+def _latest_weight_lbs(user):
+    if not user:
+        return None
+    entry = (
+        Progress.query
+        .filter(Progress.user_id == user.id, Progress.weight != None)  # noqa: E711
+        .order_by(Progress.date.desc())
+        .first()
+    )
+    if entry and entry.weight:
+        try:
+            return float(entry.weight)
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def _calculate_bmr(gender, weight_kg, height_cm, age):
+    if not all([gender, weight_kg, height_cm, age]):
+        return None
+    try:
+        weight = float(weight_kg)
+        height = float(height_cm)
+        age_val = int(age)
+    except (TypeError, ValueError):
+        return None
+
+    gender = str(gender).lower()
+    if gender.startswith('f'):
+        return (10 * weight) + (6.25 * height) - (5 * age_val) - 161
+    return (10 * weight) + (6.25 * height) - (5 * age_val) + 5
+
+
+def _calculate_calorie_targets(user, weight_lbs=None):
+    if not user:
+        return None, None
+
+    weight = weight_lbs if weight_lbs is not None else _latest_weight_lbs(user)
+    if weight is None:
+        return None, None
+
+    bmr = _calculate_bmr(user.gender, _pounds_to_kg(weight), user.height_cm, user.age)
+    if bmr is None:
+        return None, None
+
+    activity_factor = user.activity_level or 1.2
+    maintenance = bmr * activity_factor
+
+    weekly_change = user.weekly_weight_change_lbs or 0
+    try:
+        weekly_change = float(weekly_change)
+    except (TypeError, ValueError):
+        weekly_change = 0
+
+    goal = maintenance - (weekly_change * 500)
+
+    return max(0, maintenance), max(0, goal)
+
+
+def _update_user_calorie_targets(user, weight_lbs=None):
+    maintenance, goal = _calculate_calorie_targets(user, weight_lbs)
+    user.maintenance_calories = maintenance if maintenance is not None else None
+    user.calorie_goal = goal if goal is not None else None
 
 @member_bp.route("/dashboard", methods=["GET", "POST"])
 def dashboard():
@@ -301,6 +391,35 @@ def dashboard():
             selected_weight = None
             selected_food_calories = None
 
+    latest_weight_lbs = _latest_weight_lbs(user)
+    goal_weight_lbs = _kg_to_pounds(user.goal_weight_kg)
+
+    height_feet = None
+    height_inches = None
+    if user.height_cm:
+        try:
+            total_inches = float(user.height_cm) / 2.54
+            height_feet = int(total_inches // 12)
+            remaining_inches = total_inches - (height_feet * 12)
+            height_inches = round(remaining_inches)
+            if height_inches == 12:
+                height_feet += 1
+                height_inches = 0
+        except (TypeError, ValueError):
+            height_feet = None
+            height_inches = None
+
+    profile_bmr = _calculate_bmr(user.gender, _pounds_to_kg(latest_weight_lbs), user.height_cm, user.age)
+    recent_weights = []
+    if view == 'profile':
+        recent_weights = (
+            Progress.query
+            .filter_by(user_id=user.id)
+            .order_by(Progress.date.desc())
+            .limit(10)
+            .all()
+        )
+
     return render_template(
         "dashboard-member.html",
         user=user,
@@ -319,7 +438,15 @@ def dashboard():
         selected_food_protein=selected_food_protein if 'selected_food_protein' in locals() else None,
         selected_food_carbs=selected_food_carbs if 'selected_food_carbs' in locals() else None,
         selected_food_fats=selected_food_fats if 'selected_food_fats' in locals() else None,
-        selected_food_items=selected_food_items if 'selected_food_items' in locals() else []
+        selected_food_items=selected_food_items if 'selected_food_items' in locals() else [],
+        activity_levels=ACTIVITY_LEVELS,
+        latest_weight_lbs=latest_weight_lbs,
+        height_feet=height_feet,
+        height_inches=height_inches,
+        goal_weight_lbs=goal_weight_lbs,
+        profile_bmr=profile_bmr,
+        recent_weights=recent_weights,
+        today=today
     )
 
 
@@ -595,6 +722,153 @@ def view_progress():
 
     progress_entries = Progress.query.filter_by(user_id=user_id).order_by(Progress.date.desc()).all()
     return render_template('display-member.html', progress_entries=progress_entries)
+
+# -----------------------------
+# Update Profile Information
+# -----------------------------
+@member_bp.route('/update-info', methods=['POST'])
+def update_info():
+    user_id = session.get('user_id')
+    role = session.get('role')
+    if not user_id or role != 'member':
+        flash("Please log in as a member.", "danger")
+        return redirect(url_for('auth.login_member'))
+
+    user = User.query.get(user_id)
+    if not user:
+        flash("User not found.", "danger")
+        return redirect(url_for('auth.login_member'))
+
+    gender = request.form.get('gender')
+    if gender:
+        user.gender = gender.lower()
+    else:
+        user.gender = None
+
+    age_raw = request.form.get('age')
+    if age_raw is not None:
+        if str(age_raw).strip() == "":
+            user.age = None
+        else:
+            try:
+                user.age = int(age_raw)
+            except (TypeError, ValueError):
+                flash("Please enter a valid age.", "warning")
+
+    # Height handling: prefer centimeters, fall back to feet/inches
+    height_cm_raw = request.form.get('height_cm')
+    height_updated = False
+    if height_cm_raw:
+        try:
+            height_cm_val = float(height_cm_raw)
+            if height_cm_val > 0:
+                user.height_cm = height_cm_val
+                height_updated = True
+        except (TypeError, ValueError):
+            flash("Invalid height in centimeters.", "warning")
+
+    if not height_updated:
+        feet_raw = request.form.get('height_feet')
+        inches_raw = request.form.get('height_inches')
+        if feet_raw or inches_raw:
+            try:
+                feet = int(feet_raw or 0)
+                inches = float(inches_raw or 0)
+                total_inches = (feet * 12) + inches
+                if total_inches > 0:
+                    user.height_cm = total_inches * 2.54
+            except (TypeError, ValueError):
+                flash("Invalid height in feet/inches.", "warning")
+
+    activity_raw = request.form.get('activity_level')
+    if activity_raw is not None:
+        if str(activity_raw).strip() == "":
+            user.activity_level = None
+        else:
+            try:
+                user.activity_level = float(activity_raw)
+            except (TypeError, ValueError):
+                flash("Please choose a valid activity level.", "warning")
+
+    goal_weight_raw = request.form.get('goal_weight_lbs')
+    if goal_weight_raw is not None:
+        if str(goal_weight_raw).strip() == "":
+            user.goal_weight_kg = None
+        else:
+            try:
+                goal_weight_lbs = float(goal_weight_raw)
+                if goal_weight_lbs > 0:
+                    user.goal_weight_kg = _pounds_to_kg(goal_weight_lbs)
+            except (TypeError, ValueError):
+                flash("Invalid goal weight.", "warning")
+
+    weekly_change_raw = request.form.get('weekly_weight_change')
+    if weekly_change_raw is not None:
+        if str(weekly_change_raw).strip() == "":
+            user.weekly_weight_change_lbs = None
+        else:
+            try:
+                weekly_change = float(weekly_change_raw)
+                if weekly_change < 0:
+                    weekly_change = abs(weekly_change)
+                user.weekly_weight_change_lbs = weekly_change
+            except (TypeError, ValueError):
+                flash("Invalid weekly weight change.", "warning")
+
+    _update_user_calorie_targets(user)
+    db.session.commit()
+
+    flash("Profile updated successfully.", "success")
+    return redirect(url_for('member.dashboard', view='profile'))
+
+
+# -----------------------------
+# Log Weight
+# -----------------------------
+@member_bp.route('/log-weight', methods=['POST'])
+def log_weight():
+    user_id = session.get('user_id')
+    role = session.get('role')
+    if not user_id or role != 'member':
+        flash("Please log in as a member.", "danger")
+        return redirect(url_for('auth.login_member'))
+
+    user = User.query.get(user_id)
+    if not user:
+        flash("User not found.", "danger")
+        return redirect(url_for('auth.login_member'))
+
+    weight_raw = request.form.get('weight_lbs')
+    try:
+        weight_lbs = float(weight_raw)
+    except (TypeError, ValueError):
+        flash("Please enter a valid weight.", "warning")
+        return redirect(url_for('member.dashboard', view='profile'))
+
+    if weight_lbs <= 0:
+        flash("Weight must be greater than zero.", "warning")
+        return redirect(url_for('member.dashboard', view='profile'))
+
+    date_raw = request.form.get('weight_date')
+    if date_raw:
+        try:
+            weight_date = datetime.strptime(date_raw, "%Y-%m-%d").date()
+        except ValueError:
+            flash("Invalid date format for weight entry.", "warning")
+            return redirect(url_for('member.dashboard', view='profile'))
+    else:
+        weight_date = datetime.utcnow().date()
+
+    entry_datetime = datetime.combine(weight_date, datetime.utcnow().time())
+    log_entry = Progress(user_id=user.id, date=entry_datetime, weight=weight_lbs)
+    db.session.add(log_entry)
+
+    _update_user_calorie_targets(user, weight_lbs=weight_lbs)
+    db.session.commit()
+
+    flash("Weight logged successfully.", "success")
+    return redirect(url_for('member.dashboard', view='profile'))
+
 
 # -----------------------------
 # Register Member with Trainer

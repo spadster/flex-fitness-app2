@@ -1,496 +1,849 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Member Dashboard | Temp</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
-  <style>
-    #foodSuggestions {
-      position: absolute;
-      z-index: 1000;
-      width: 100%;
-      max-height: 250px;
-      overflow-y: auto;
-      display: none;
-    }
-    
-    .macro-card {
-      border-left: 4px solid;
-      transition: transform 0.2s;
-    }
-    
-    .macro-card:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-    }
-    
-    .macro-card.calories { border-left-color: #ff6b6b; }
-    .macro-card.protein { border-left-color: #4ecdc4; }
-    .macro-card.carbs { border-left-color: #95e1d3; }
-    .macro-card.fats { border-left-color: #feca57; }
-    
-    .progress-ring-circle {
-      transition: stroke-dashoffset 0.35s;
-    }
-  </style>
-</head>
-<body class="bg-light">
-<nav class="navbar navbar-expand-lg navbar-dark bg-primary">
-  <div class="container">
-    <a class="navbar-brand ms-auto fw" href="{{ url_for('main.home') }}">Temp</a>
-    <a href="{{ url_for('auth.logout') }}" class="btn btn-outline-light ms-3">Log Out</a>
-  </div>
-</nav>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Member Dashboard | Temp</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <style>
+      #foodSuggestions {
+        position: absolute;
+        z-index: 1000;
+        width: 100%;
+        max-height: 250px;
+        overflow-y: auto;
+        display: none;
+      }
 
-<div class="container mt-4">
-  <h1 class="mb-4">Welcome back, {{ user.first_name }}!</h1>
+      .macro-card {
+        border-left: 4px solid;
+        transition: transform 0.2s;
+      }
 
-  <div class="row">
-    <!-- Sidebar -->
-    <div class="col-md-3 mb-3">
-      <div class="list-group">
-        <a href="{{ url_for('member.dashboard') }}" class="list-group-item list-group-item-action {% if view != 'calendar' %}active{% endif %}">Dashboard</a>
-        <a href="{{ url_for('member.view_progress') }}" class="list-group-item list-group-item-action">View Progress</a>
-        <a href="{{ url_for('member.exercise_plan') }}" class="list-group-item list-group-item-action">Exercise Plan</a>
-        <a href="{{ url_for('member.dashboard') }}?view=calendar" class="list-group-item list-group-item-action {% if view == 'calendar' %}active{% endif %}">Calendar</a>
+      .macro-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      }
+
+      .macro-card.calories {
+        border-left-color: #ff6b6b;
+      }
+      .macro-card.protein {
+        border-left-color: #4ecdc4;
+      }
+      .macro-card.carbs {
+        border-left-color: #95e1d3;
+      }
+      .macro-card.fats {
+        border-left-color: #feca57;
+      }
+
+      .progress-ring-circle {
+        transition: stroke-dashoffset 0.35s;
+      }
+    </style>
+  </head>
+  <body class="bg-light">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+      <div class="container">
+        <a class="navbar-brand ms-auto fw" href="{{ url_for('main.home') }}"
+          >Temp</a
+        >
+        <a
+          href="{{ url_for('auth.logout') }}"
+          class="btn btn-outline-light ms-3"
+          >Log Out</a
+        >
       </div>
-    </div>
+    </nav>
 
-    <!-- Main content -->
-    <div class="col-md-9">
-      {% if view != 'calendar' %}
-      <!-- Daily Calorie Goal with Progress Ring -->
-      <div class="card mb-4 shadow-sm">
-        <div class="card-body text-center">
-          <h5 class="card-title mb-4">Daily Calorie Goal</h5>
-          <div class="d-flex justify-content-center align-items-center mb-3">
-            <svg class="progress-ring" width="200" height="200">
-              <circle
-                class="progress-ring-circle"
-                stroke="#e0e0e0"
-                stroke-width="15"
-                fill="transparent"
-                r="85"
-                cx="100"
-                cy="100"
-              />
-              <circle
-                class="progress-ring-circle"
-                stroke="#ff6b6b"
-                stroke-width="15"
-                fill="transparent"
-                r="85"
-                cx="100"
-                cy="100"
-                stroke-dasharray="534.07 534.07"
-                stroke-dashoffset="{{ 534.07 - (534.07 * (totals.calories / (user.calorie_goal or 2000))) if user.calorie_goal else 534.07 - (534.07 * (totals.calories / 2000)) }}"
-                stroke-linecap="round"
-              />
-              <text x="100" y="95" text-anchor="middle" font-size="32" font-weight="bold" fill="#333">
-                {{ totals.calories | round(0) | int }}
-              </text>
-              <text x="100" y="115" text-anchor="middle" font-size="14" fill="#666">
-                / {{ user.calorie_goal or 2000 }} cal
-              </text>
-            </svg>
+    <div class="container mt-4">
+      <h1 class="mb-4">Welcome back, {{ user.first_name }}!</h1>
+
+      <div class="row">
+        <!-- Sidebar -->
+        <div class="col-md-3 mb-3">
+          <div class="list-group">
+            <a
+              href="{{ url_for('member.dashboard') }}"
+              class="list-group-item list-group-item-action {% if not view or view not in ['calendar', 'profile'] %}active{% endif %}"
+              >Dashboard</a
+            >
+            <a
+              href="{{ url_for('member.dashboard') }}?view=profile"
+              class="list-group-item list-group-item-action {% if view == 'profile' %}active{% endif %}"
+              >Profile &amp; Goals</a
+            >
+            <a
+              href="{{ url_for('member.view_progress') }}"
+              class="list-group-item list-group-item-action"
+              >View Progress</a
+            >
+            <a
+              href="{{ url_for('member.exercise_plan') }}"
+              class="list-group-item list-group-item-action"
+              >Exercise Plan</a
+            >
+            <a
+              href="{{ url_for('member.dashboard') }}?view=calendar"
+              class="list-group-item list-group-item-action {% if view == 'calendar' %}active{% endif %}"
+              >Calendar</a
+            >
           </div>
-          <div class="progress mb-2" style="height: 25px;">
-            <div class="progress-bar bg-danger" role="progressbar" 
-                 style="width: {{ (totals.calories / (user.calorie_goal or 2000) * 100) | round(1) }}%"
-                 aria-valuenow="{{ totals.calories }}" 
-                 aria-valuemin="0" 
-                 aria-valuemax="{{ user.calorie_goal or 2000 }}">
-              {{ (totals.calories / (user.calorie_goal or 2000) * 100) | round(1) }}%
-            </div>
-          </div>
-          <p class="text-muted mb-0">
-            {% set remaining = (user.calorie_goal or 2000) - totals.calories %}
-            {% if remaining > 0 %}
-              <span class="text-success">{{ remaining | round(0) | int }} calories remaining</span>
-            {% else %}
-              <span class="text-warning">{{ (remaining * -1) | round(0) | int }} calories over goal</span>
-            {% endif %}
-          </p>
         </div>
-      </div>
 
-      <!-- Macros Summary Cards -->
-      <div class="row mb-4">
-        <div class="col-md-4 mb-3">
-          <div class="card macro-card protein shadow-sm">
+        <!-- Main content -->
+        <div class="col-md-9">
+          {% if view == 'profile' %}
+          <div class="card mb-4 shadow-sm">
             <div class="card-body">
-              <h6 class="text-muted mb-2">PROTEIN</h6>
-              <h3 class="mb-1">{{ totals.protein | round(1) }}g</h3>
-              <small class="text-muted">{{ (totals.protein * 4) | round(0) | int }} cal</small>
+              <h4 class="card-title mb-3">Calorie Targets</h4>
+              <div class="row text-center">
+                <div class="col-md-4 mb-3">
+                  <div class="fw-bold fs-4">{{ user.maintenance_calories | round(0) if user.maintenance_calories is not none else '—' }}</div>
+                  <div class="text-muted">Maintenance Calories</div>
+                </div>
+                <div class="col-md-4 mb-3">
+                  <div class="fw-bold fs-4">{{ user.calorie_goal | round(0) if user.calorie_goal is not none else '—' }}</div>
+                  <div class="text-muted">Daily Calorie Goal</div>
+                </div>
+                <div class="col-md-4 mb-3">
+                  <div class="fw-bold fs-4">{{ profile_bmr | round(0) if profile_bmr is not none else '—' }}</div>
+                  <div class="text-muted">BMR (Mifflin St-Jeor)</div>
+                </div>
+              </div>
+              <p class="small text-muted mb-0">Maintenance calories are calculated using the Mifflin St-Jeor equation and your selected activity factor.</p>
             </div>
           </div>
-        </div>
-        <div class="col-md-4 mb-3">
-          <div class="card macro-card carbs shadow-sm">
+
+          <div class="card mb-4">
             <div class="card-body">
-              <h6 class="text-muted mb-2">CARBS</h6>
-              <h3 class="mb-1">{{ totals.carbs | round(1) }}g</h3>
-              <small class="text-muted">{{ (totals.carbs * 4) | round(0) | int }} cal</small>
+              <h4 class="card-title mb-3">Update Profile</h4>
+              <form method="POST" action="{{ url_for('member.update_info') }}">
+                <div class="row g-3">
+                  <div class="col-md-4">
+                    <label class="form-label">Gender</label>
+                    <select name="gender" class="form-select">
+                      <option value="" {% if not user.gender %}selected{% endif %}>Select gender</option>
+                      <option value="female" {% if user.gender == 'female' %}selected{% endif %}>Female</option>
+                      <option value="male" {% if user.gender == 'male' %}selected{% endif %}>Male</option>
+                      <option value="other" {% if user.gender == 'other' %}selected{% endif %}>Other</option>
+                    </select>
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label">Age</label>
+                    <input type="number" name="age" class="form-control" min="0" value="{{ user.age if user.age is not none else '' }}" placeholder="Years">
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label">Activity Level</label>
+                    <select name="activity_level" class="form-select">
+                      <option value="" {% if not user.activity_level %}selected{% endif %}>Select activity</option>
+                      {% for factor, label in activity_levels %}
+                        <option value="{{ factor }}" {% if user.activity_level == factor %}selected{% endif %}>{{ label }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                </div>
+                <div class="row g-3 mt-1">
+                  <div class="col-md-4">
+                    <label class="form-label">Height (feet)</label>
+                    <input type="number" name="height_feet" class="form-control" min="0" value="{{ height_feet if height_feet is not none else '' }}">
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label">Height (inches)</label>
+                    <input type="number" step="0.1" name="height_inches" class="form-control" min="0" value="{{ height_inches if height_inches is not none else '' }}">
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label">Height (cm)</label>
+                    <input type="number" step="0.1" name="height_cm" class="form-control" min="0" value="{{ user.height_cm if user.height_cm is not none else '' }}">
+                  </div>
+                </div>
+                <div class="row g-3 mt-1">
+                  <div class="col-md-4">
+                    <label class="form-label">Goal Weight (lbs)</label>
+                    <input type="number" step="0.1" name="goal_weight_lbs" class="form-control" min="0" value="{{ goal_weight_lbs | round(1) if goal_weight_lbs is not none else '' }}">
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label">Weekly Weight Change (lbs)</label>
+                    <input type="number" step="0.1" name="weekly_weight_change" class="form-control" min="0" value="{{ user.weekly_weight_change_lbs | round(2) if user.weekly_weight_change_lbs is not none else '' }}" placeholder="e.g. 1">
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label">Current Trainer</label>
+                    <input type="text" class="form-control" value="{% if user.trainer %}{{ user.trainer.first_name }} {{ user.trainer.last_name }}{% else %}Not connected{% endif %}" readonly>
+                  </div>
+                </div>
+                <button type="submit" class="btn btn-primary mt-3">Save Profile</button>
+              </form>
             </div>
           </div>
-        </div>
-        <div class="col-md-4 mb-3">
-          <div class="card macro-card fats shadow-sm">
-            <div class="card-body">
-              <h6 class="text-muted mb-2">FATS</h6>
-              <h3 class="mb-1">{{ totals.fat | round(1) }}g</h3>
-              <small class="text-muted">{{ (totals.fat * 9) | round(0) | int }} cal</small>
-            </div>
-          </div>
-        </div>
-      </div>
 
-      <h3>Log Food</h3>
-
-      <!-- Add Food Form -->
-      <form method="POST" id="foodForm" class="mb-4" action="{{ url_for('member.log_food') }}">
-        <div class="input-group position-relative">
-          <input type="text" id="food_search" name="food_search" class="form-control"
-                placeholder="Search or enter food..." autocomplete="off" required>
-          <input type="number" step="0.01" id="log_quantity" name="log_quantity" class="form-control" placeholder="Quantity" value="1" required>
-          <select id="log_unit" name="unit" class="form-select">
-            <option value="g">g</option>
-            <option value="kg">kg</option>
-            <option value="oz">oz</option>
-            <option value="lb">lb</option>
-            <option value="tsp">tsp</option>
-            <option value="tbsp">tbsp</option>
-            <option value="cup">cup</option>
-          </select>
-          <input type="hidden" name="food_id" id="food_id">
-          <button type="submit" class="btn btn-primary">Add</button>
-        </div>
-
-        <ul id="foodSuggestions" class="list-group position-absolute w-100 shadow-sm" style="z-index:1000; display:none;"></ul>
-      </form>
-
-      <!-- Add Custom or New Food Form -->
-      <div class="card mb-4">
-        <div class="card-body">
-          <h5 class="card-title">Add Custom Food</h5>
-          <form method="POST" id = "customFoodForm" action="{{ url_for('member.log_food') }}">
-            <div class="mb-2">
-              <input type="text" name="food_name" class="form-control" placeholder="Food Name" required>
-            </div>
-            <div class="row">
-              <div class="col">
-                <input type="number" step="0.01" name="calories" class="form-control" placeholder="Calories (kcal)">
-              </div>
-              <div class="col">
-                <input type="number" step="0.01" name="protein_g" class="form-control" placeholder="Protein (g)">
-              </div>
-              <div class="col">
-                <input type="number" step="0.01" name="carbs_g" class="form-control" placeholder="Carbs (g)">
-              </div>
-              <div class="col">
-                <input type="number" step="0.01" name="fats_g" class="form-control" placeholder="Fat (g)">
-              </div>
-            </div>
-            <div class="row mt-2">
-              <div class="col">
-                <input type="number" step="0.01" name="quantity" class="form-control" placeholder="Quantity" value="1" required>
-              </div>
-              <div class="col">
-                <select name="unit" class="form-control">
-                  <option value="g">g</option>
-                  <option value="kg">kg</option>
-                  <option value="oz">oz</option>
-                  <option value="lb">lb</option>
-                  <option value="tsp">tsp</option>
-                  <option value="tbsp">tbsp</option>
-                  <option value="cup">cup</option>
-                </select>
-              </div>
-            </div>
-            <button type="submit" class="btn btn-success mt-2">Add Custom Food</button>
-          </form>
-        </div>
-      </div>
-
-      <!-- Display Logged Foods -->
-      <h4 class="mb-3">Today's Foods</h4>
-      <div id="foodLogsContainer">
-        <div class="table-responsive {% if not user_food_logs %}d-none{% endif %}" id="logsTableWrapper">
-          <table class="table table-hover">
-            <thead class="table-light">
-              <tr>
-                <th>Food</th>
-                <th>Quantity</th>
-                <th>Calories</th>
-                <th>Protein</th>
-                <th>Carbs</th>
-                <th>Fat</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody id="foodLogsTableBody">
-              {% for log in user_food_logs %}
-              <tr id="log-{{ log.id }}">
-                <td><strong>{{ log.food.name }}</strong></td>
-                <td>{{ log.quantity }} {{ log.unit }}</td>
-                <td>{{ log.scaled.calories | round(1) }}</td>
-                <td>{{ log.scaled.protein | round(1) }}g</td>
-                <td>{{ log.scaled.carbs | round(1) }}g</td>
-                <td>{{ log.scaled.fats | round(1) }}g</td>
-                <td>
-                  <form onsubmit="event.preventDefault(); deleteLog({{ log.id }});" style="display:inline;">
-                    <button type="submit" class="btn btn-sm btn-danger">✕</button>
+          <div class="row">
+            <div class="col-md-6">
+              <div class="card mb-4 h-100">
+                <div class="card-body">
+                  <h5 class="card-title">Log Weight</h5>
+                  <form method="POST" action="{{ url_for('member.log_weight') }}">
+                    <div class="mb-3">
+                      <label class="form-label">Weight (lbs)</label>
+                      <input type="number" step="0.1" name="weight_lbs" class="form-control" min="0" value="{{ latest_weight_lbs | round(1) if latest_weight_lbs is not none else '' }}" required>
+                    </div>
+                    <div class="mb-3">
+                      <label class="form-label">Date</label>
+                      <input type="date" name="weight_date" class="form-control" value="{{ today.isoformat() }}">
+                    </div>
+                    <button type="submit" class="btn btn-success">Log Weight</button>
                   </form>
-                </td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-        <div class="alert alert-info {% if user_food_logs %}d-none{% endif %}" id="noLogsAlert">
-          <i class="bi bi-info-circle"></i> No foods logged yet today. Start tracking your meals above!
-        </div>
-      </div>
-      {% endif %}
-
-      <!-- Calendar view (server-rendered, no JS) -->
-      {% if view == 'calendar' and cal_month and cal_year and calendar_weeks %}
-      <div class="card mt-4">
-        <div class="card-body">
-          <div class="d-flex align-items-center justify-content-between mb-2">
-            {% set prev_month = cal_month - 1 %}
-            {% set prev_year = cal_year %}
-            {% if prev_month < 1 %}{% set prev_month = 12 %}{% set prev_year = cal_year - 1 %}{% endif %}
-            {% set next_month = cal_month + 1 %}
-            {% set next_year = cal_year %}
-            {% if next_month > 12 %}{% set next_month = 1 %}{% set next_year = cal_year + 1 %}{% endif %}
-            <div>
-              <a href="{{ url_for('member.dashboard') }}?view=calendar&year={{ prev_year }}&month={{ prev_month }}" class="btn btn-sm btn-outline-primary">&lt;</a>
-              <a href="{{ url_for('member.dashboard') }}?view=calendar&year={{ next_year }}&month={{ next_month }}" class="btn btn-sm btn-outline-primary ms-1">&gt;</a>
+                </div>
+              </div>
             </div>
-            <h5 class="mb-0">{{ cal_year }} — {{ "%02d"|format(cal_month) }}</h5>
-            <div></div>
+            <div class="col-md-6">
+              <div class="card mb-4 h-100">
+                <div class="card-body">
+                  <h5 class="card-title">Register with Trainer</h5>
+                  <form method="POST" action="{{ url_for('member.register_trainer') }}">
+                    <div class="mb-3">
+                      <label class="form-label">Trainer Code</label>
+                      <input type="text" name="trainer_code" class="form-control" maxlength="6" placeholder="Enter code" required>
+                    </div>
+                    <button type="submit" class="btn btn-outline-primary">Connect</button>
+                  </form>
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div class="container-fluid">
-            <div class="row row-cols-7 text-center fw-bold border-bottom pb-2">
-              <div class="col">Sun</div><div class="col">Mon</div><div class="col">Tue</div>
-              <div class="col">Wed</div><div class="col">Thu</div><div class="col">Fri</div><div class="col">Sat</div>
+          <div class="card mb-4">
+            <div class="card-body">
+              <h5 class="card-title">Recent Weight Entries</h5>
+              {% if recent_weights %}
+              <div class="table-responsive">
+                <table class="table table-sm">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th class="text-end">Weight (lbs)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for entry in recent_weights %}
+                    <tr>
+                      <td>{{ entry.date.strftime('%Y-%m-%d') if entry.date else '' }}</td>
+                      <td class="text-end">{{ entry.weight | round(1) if entry.weight is not none else '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+              {% else %}
+              <p class="text-muted mb-0">No weight entries logged yet.</p>
+              {% endif %}
             </div>
+          </div>
 
-            {% for week in calendar_weeks %}
-              <div class="row row-cols-7 g-2 mt-2">
-                {% for day in week %}
-                  <div class="col">
-                    {% if day.day %}
-                      <a href="{{ url_for('member.dashboard') }}?view=calendar&year={{ cal_year }}&month={{ cal_month }}&day={{ day.iso }}" class="text-decoration-none text-reset">
-                        <div class="p-2 h-100 border {% if not day.in_month %}text-muted bg-light{% endif %}" style="min-height:110px;">
-                          <div class="d-flex justify-content-between align-items-start mb-1">
-                            <small class="text-muted">{{ day.day }}</small>
-                            <div>
-                              {% if day.data and day.data.weight is defined and day.data.weight is not none %}<span class="badge bg-info text-dark me-1">W</span>{% endif %}
-                              {% if day.data and day.data.food %}<span class="badge bg-success me-1">F</span>{% endif %}
+          {% elif view == 'calendar' and cal_month and cal_year and calendar_weeks %}
+          <div class="card mt-4">
+            <div class="card-body">
+              <div class="d-flex align-items-center justify-content-between mb-2">
+                {% set prev_month = cal_month - 1 %}
+                {% set prev_year = cal_year %}
+                {% if prev_month < 1 %}{% set prev_month = 12 %}{% set prev_year = cal_year - 1 %}{% endif %}
+                {% set next_month = cal_month + 1 %}
+                {% set next_year = cal_year %}
+                {% if next_month > 12 %}{% set next_month = 1 %}{% set next_year = cal_year + 1 %}{% endif %}
+                <div>
+                  <a href="{{ url_for('member.dashboard') }}?view=calendar&year={{ prev_year }}&month={{ prev_month }}" class="btn btn-sm btn-outline-primary">&lt;</a>
+                  <a href="{{ url_for('member.dashboard') }}?view=calendar&year={{ next_year }}&month={{ next_month }}" class="btn btn-sm btn-outline-primary ms-1">&gt;</a>
+                </div>
+                <h5 class="mb-0">{{ cal_year }} — {{ "%02d"|format(cal_month) }}</h5>
+                <div></div>
+              </div>
+
+              <div class="container-fluid">
+                <div class="row row-cols-7 text-center fw-bold border-bottom pb-2">
+                  <div class="col">Sun</div><div class="col">Mon</div><div class="col">Tue</div>
+                  <div class="col">Wed</div><div class="col">Thu</div><div class="col">Fri</div><div class="col">Sat</div>
+                </div>
+
+                {% for week in calendar_weeks %}
+                  <div class="row row-cols-7 g-2 mt-2">
+                    {% for day in week %}
+                      <div class="col">
+                        {% if day.day %}
+                          <a href="{{ url_for('member.dashboard') }}?view=calendar&year={{ cal_year }}&month={{ cal_month }}&day={{ day.iso }}" class="text-decoration-none text-reset">
+                            <div class="p-2 h-100 border {% if not day.in_month %}text-muted bg-light{% endif %}" style="min-height:110px;">
+                              <div class="d-flex justify-content-between align-items-start mb-1">
+                                <small class="text-muted">{{ day.day }}</small>
+                                <div>
+                                  {% if day.data and day.data.weight is defined and day.data.weight is not none %}<span class="badge bg-info text-dark me-1">W</span>{% endif %}
+                                  {% if day.data and day.data.food %}<span class="badge bg-success me-1">F</span>{% endif %}
+                                </div>
+                              </div>
+
+                              <div class="small" style="line-height:1.1;">
+                                <div><strong>Weight:</strong> {{ day.data.weight if day.data and day.data.weight is not none else '—' }}</div>
+                              </div>
+
                             </div>
-                          </div>
-
-                          <div class="small" style="line-height:1.1;">
-                            <div><strong>Weight:</strong> {{ day.data.weight if day.data and day.data.weight is not none else '—' }}</div>
-                          </div>
-
-                        </div>
-                      </a>
-                    {% else %}
-                      <div class="p-2 h-100 border bg-light" style="min-height:110px;"></div>
-                    {% endif %}
+                          </a>
+                        {% else %}
+                          <div class="p-2 h-100 border bg-light" style="min-height:110px;"></div>
+                        {% endif %}
+                      </div>
+                    {% endfor %}
                   </div>
                 {% endfor %}
               </div>
-            {% endfor %}
+
+              <!-- selected-day details -->
+              <div class="text-center mt-3">
+                <div class="small text-muted">Selected: {{ (selected_date.strftime('%A, %B %d, %Y') if selected_date else '') }}</div>
+                <div class="mt-2 border rounded p-3 bg-light text-start">
+                  <div><strong>Weight:</strong> {{ selected_weight if selected_weight is not none else 'No entry' }}</div>
+                  <div><strong>Food:</strong>
+                    <div>Calories: {% if selected_food_calories is not none %}{{ selected_food_calories }} kcal{% else %}No entry{% endif %}</div>
+                    <div>Protein: {% if selected_food_protein is defined and selected_food_protein is not none %}{{ selected_food_protein }} g{% else %}—{% endif %}</div>
+                    <div>Carbs: {% if selected_food_carbs is defined and selected_food_carbs is not none %}{{ selected_food_carbs }} g{% else %}—{% endif %}</div>
+                    <div>Fats: {% if selected_food_fats is defined and selected_food_fats is not none %}{{ selected_food_fats }} g{% else %}—{% endif %}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          {% else %}
+          <!-- Daily Calorie Goal with Progress Ring -->
+          <div class="card mb-4 shadow-sm">
+            <div class="card-body text-center">
+              <h5 class="card-title mb-4">Daily Calorie Goal</h5>
+              <div
+                class="d-flex justify-content-center align-items-center mb-3"
+              >
+                <svg class="progress-ring" width="200" height="200">
+                  <circle
+                    class="progress-ring-circle"
+                    stroke="#e0e0e0"
+                    stroke-width="15"
+                    fill="transparent"
+                    r="85"
+                    cx="100"
+                    cy="100"
+                  />
+                  <circle
+                    class="progress-ring-circle"
+                    stroke="#ff6b6b"
+                    stroke-width="15"
+                    fill="transparent"
+                    r="85"
+                    cx="100"
+                    cy="100"
+                    stroke-dasharray="534.07 534.07"
+                    stroke-dashoffset="{{ 534.07 - (534.07 * (totals.calories / (user.calorie_goal or 2000))) if user.calorie_goal else 534.07 - (534.07 * (totals.calories / 2000)) }}"
+                    stroke-linecap="round"
+                  />
+                  <text
+                    x="100"
+                    y="95"
+                    text-anchor="middle"
+                    font-size="32"
+                    font-weight="bold"
+                    fill="#333"
+                  >
+                    {{ totals.calories | round(0) | int }}
+                  </text>
+                  <text
+                    x="100"
+                    y="115"
+                    text-anchor="middle"
+                    font-size="14"
+                    fill="#666"
+                  >
+                    / {{ user.calorie_goal or 2000 }} cal
+                  </text>
+                </svg>
+              </div>
+              <div class="progress mb-2" style="height: 25px">
+                <div
+                  class="progress-bar bg-danger"
+                  role="progressbar"
+                  style="width: {{ (totals.calories / (user.calorie_goal or 2000) * 100) | round(1) }}%"
+                  aria-valuenow="{{ totals.calories }}"
+                  aria-valuemin="0"
+                  aria-valuemax="{{ user.calorie_goal or 2000 }}"
+                >
+                  {{ (totals.calories / (user.calorie_goal or 2000) * 100) |
+                  round(1) }}%
+                </div>
+              </div>
+              <p class="text-muted mb-0">
+                {% set remaining = (user.calorie_goal or 2000) - totals.calories
+                %} {% if remaining > 0 %}
+                <span class="text-success"
+                  >{{ remaining | round(0) | int }} calories remaining</span
+                >
+                {% else %}
+                <span class="text-warning"
+                  >{{ (remaining * -1) | round(0) | int }} calories over
+                  goal</span
+                >
+                {% endif %}
+              </p>
+            </div>
           </div>
 
-          <!-- selected-day details -->
-          <div class="text-center mt-3">
-            <div class="small text-muted">Selected: {{ (selected_date.strftime('%A, %B %d, %Y') if selected_date else '') }}</div>
-            <div class="mt-2 border rounded p-3 bg-light text-start">
-              <div><strong>Weight:</strong> {{ selected_weight if selected_weight is not none else 'No entry' }}</div>
-              <div><strong>Food:</strong>
-                <div>Calories: {% if selected_food_calories is not none %}{{ selected_food_calories }} kcal{% else %}No entry{% endif %}</div>
-                <div>Protein: {% if selected_food_protein is defined and selected_food_protein is not none %}{{ selected_food_protein }} g{% else %}—{% endif %}</div>
-                <div>Carbs: {% if selected_food_carbs is defined and selected_food_carbs is not none %}{{ selected_food_carbs }} g{% else %}—{% endif %}</div>
-                <div>Fats: {% if selected_food_fats is defined and selected_food_fats is not none %}{{ selected_food_fats }} g{% else %}—{% endif %}</div>
+          <!-- Macros Summary Cards -->
+          <div class="row mb-4">
+            <div class="col-md-4 mb-3">
+              <div class="card macro-card protein shadow-sm">
+                <div class="card-body">
+                  <h6 class="text-muted mb-2">PROTEIN</h6>
+                  <h3 class="mb-1">{{ totals.protein | round(1) }}g</h3>
+                  <small class="text-muted"
+                    >{{ (totals.protein * 4) | round(0) | int }} cal</small
+                  >
+                </div>
+              </div>
+            </div>
+            <div class="col-md-4 mb-3">
+              <div class="card macro-card carbs shadow-sm">
+                <div class="card-body">
+                  <h6 class="text-muted mb-2">CARBS</h6>
+                  <h3 class="mb-1">{{ totals.carbs | round(1) }}g</h3>
+                  <small class="text-muted"
+                    >{{ (totals.carbs * 4) | round(0) | int }} cal</small
+                  >
+                </div>
+              </div>
+            </div>
+            <div class="col-md-4 mb-3">
+              <div class="card macro-card fats shadow-sm">
+                <div class="card-body">
+                  <h6 class="text-muted mb-2">FATS</h6>
+                  <h3 class="mb-1">{{ totals.fat | round(1) }}g</h3>
+                  <small class="text-muted"
+                    >{{ (totals.fat * 9) | round(0) | int }} cal</small
+                  >
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <h3>Log Food</h3>
+
+          <!-- Add Food Form -->
+          <form
+            method="POST"
+            id="foodForm"
+            class="mb-4"
+            action="{{ url_for('member.log_food') }}"
+          >
+            <div class="input-group position-relative">
+              <input
+                type="text"
+                id="food_search"
+                name="food_search"
+                class="form-control"
+                placeholder="Search or enter food..."
+                autocomplete="off"
+                required
+              />
+              <input
+                type="number"
+                step="0.01"
+                id="log_quantity"
+                name="log_quantity"
+                class="form-control"
+                placeholder="Quantity"
+                value="1"
+                required
+              />
+              <select id="log_unit" name="unit" class="form-select">
+                <option value="g">g</option>
+                <option value="kg">kg</option>
+                <option value="oz">oz</option>
+                <option value="lb">lb</option>
+                <option value="tsp">tsp</option>
+                <option value="tbsp">tbsp</option>
+                <option value="cup">cup</option>
+              </select>
+              <input type="hidden" name="food_id" id="food_id" />
+              <button type="submit" class="btn btn-primary">Add</button>
+            </div>
+
+            <ul
+              id="foodSuggestions"
+              class="list-group position-absolute w-100 shadow-sm"
+              style="z-index: 1000; display: none"
+            ></ul>
+          </form>
+
+          <!-- Add Custom or New Food Form -->
+          <div class="card mb-4">
+            <div class="card-body">
+              <h5 class="card-title">Add Custom Food</h5>
+              <form
+                method="POST"
+                id="customFoodForm"
+                action="{{ url_for('member.log_food') }}"
+              >
+                <div class="mb-2">
+                  <input
+                    type="text"
+                    name="food_name"
+                    class="form-control"
+                    placeholder="Food Name"
+                    required
+                  />
+                </div>
+                <div class="row">
+                  <div class="col">
+                    <input
+                      type="number"
+                      step="0.01"
+                      name="calories"
+                      class="form-control"
+                      placeholder="Calories (kcal)"
+                    />
+                  </div>
+                  <div class="col">
+                    <input
+                      type="number"
+                      step="0.01"
+                      name="protein_g"
+                      class="form-control"
+                      placeholder="Protein (g)"
+                    />
+                  </div>
+                  <div class="col">
+                    <input
+                      type="number"
+                      step="0.01"
+                      name="carbs_g"
+                      class="form-control"
+                      placeholder="Carbs (g)"
+                    />
+                  </div>
+                  <div class="col">
+                    <input
+                      type="number"
+                      step="0.01"
+                      name="fats_g"
+                      class="form-control"
+                      placeholder="Fat (g)"
+                    />
+                  </div>
+                </div>
+                <div class="row mt-2">
+                  <div class="col">
+                    <input
+                      type="number"
+                      step="0.01"
+                      name="quantity"
+                      class="form-control"
+                      placeholder="Quantity"
+                      value="1"
+                      required
+                    />
+                  </div>
+                  <div class="col">
+                    <select name="unit" class="form-control">
+                      <option value="g">g</option>
+                      <option value="kg">kg</option>
+                      <option value="oz">oz</option>
+                      <option value="lb">lb</option>
+                      <option value="tsp">tsp</option>
+                      <option value="tbsp">tbsp</option>
+                      <option value="cup">cup</option>
+                    </select>
+                  </div>
+                </div>
+                <button type="submit" class="btn btn-success mt-2">
+                  Add Custom Food
+                </button>
+              </form>
+            </div>
+          </div>
+
+          <!-- Display Logged Foods -->
+          <h4 class="mb-3">Today's Foods</h4>
+          <div id="foodLogsContainer">
+            <div
+              class="table-responsive {% if not user_food_logs %}d-none{% endif %}"
+              id="logsTableWrapper"
+            >
+              <table class="table table-hover">
+                <thead class="table-light">
+                  <tr>
+                    <th>Food</th>
+                    <th>Quantity</th>
+                    <th>Calories</th>
+                    <th>Protein</th>
+                    <th>Carbs</th>
+                    <th>Fat</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="foodLogsTableBody">
+                  {% for log in user_food_logs %}
+                  <tr id="log-{{ log.id }}">
+                    <td><strong>{{ log.food.name }}</strong></td>
+                    <td>{{ log.quantity }} {{ log.unit }}</td>
+                    <td>{{ log.scaled.calories | round(1) }}</td>
+                    <td>{{ log.scaled.protein | round(1) }}g</td>
+                    <td>{{ log.scaled.carbs | round(1) }}g</td>
+                    <td>{{ log.scaled.fats | round(1) }}g</td>
+                    <td>
+                      <form
+                        onsubmit="event.preventDefault(); deleteLog({{ log.id }});"
+                        style="display: inline"
+                      >
+                        <button type="submit" class="btn btn-sm btn-danger">
+                          ✕
+                        </button>
+                      </form>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            <div
+              class="alert alert-info {% if user_food_logs %}d-none{% endif %}"
+              id="noLogsAlert"
+            >
+              <i class="bi bi-info-circle"></i> No foods logged yet today. Start
+              tracking your meals above!
+            </div>
+          </div>
+      {% endif %}
+                  </div>
+              </div>
+          </div>
+
+              <!-- selected-day details -->
+              <div class="text-center mt-3">
+                <div class="small text-muted">
+                  Selected: {{ (selected_date.strftime('%A, %B %d, %Y') if
+                  selected_date else '') }}
+                </div>
+                <div class="mt-2 border rounded p-3 bg-light text-start">
+                  <div>
+                    <strong>Weight:</strong> {{ selected_weight if
+                    selected_weight is not none else 'No entry' }}
+                  </div>
+                  <div>
+                    <strong>Food:</strong>
+                    <div>
+                      Calories: {% if selected_food_calories is not none %}{{
+                      selected_food_calories }} kcal{% else %}No entry{% endif
+                      %}
+                    </div>
+                    <div>
+                      Protein: {% if selected_food_protein is defined and
+                      selected_food_protein is not none %}{{
+                      selected_food_protein }} g{% else %}—{% endif %}
+                    </div>
+                    <div>
+                      Carbs: {% if selected_food_carbs is defined and
+                      selected_food_carbs is not none %}{{ selected_food_carbs
+                      }} g{% else %}—{% endif %}
+                    </div>
+                    <div>
+                      Fats: {% if selected_food_fats is defined and
+                      selected_food_fats is not none %}{{ selected_food_fats }}
+                      g{% else %}—{% endif %}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
-      {% endif %}
     </div>
-  </div>
-</div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<script>
-const searchInput = document.getElementById("food_search");
-const suggestionsBox = document.getElementById("foodSuggestions");
-const foodIdInput = document.getElementById("food_id");
-const unitSelect = document.getElementById("log_unit");
-const quantityInput = document.getElementById("log_quantity");
-const form = document.getElementById("foodForm");
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+      const searchInput = document.getElementById("food_search");
+      const suggestionsBox = document.getElementById("foodSuggestions");
+      const foodIdInput = document.getElementById("food_id");
+      const unitSelect = document.getElementById("log_unit");
+      const quantityInput = document.getElementById("log_quantity");
+      const form = document.getElementById("foodForm");
 
-// Fetch suggestions
-async function fetchFoods() {
-  const query = searchInput.value.trim();
-  if (query.length < 2) { suggestionsBox.style.display = "none"; return; }
+      // Fetch suggestions
+      async function fetchFoods() {
+        const query = searchInput.value.trim();
+        if (query.length < 2) {
+          suggestionsBox.style.display = "none";
+          return;
+        }
 
-  const res = await fetch(`/member/search-foods?q=${encodeURIComponent(query)}&unit=${unitSelect.value}&quantity=${quantityInput.value}`);
-  const data = await res.json();
+        const res = await fetch(
+          `/member/search-foods?q=${encodeURIComponent(query)}&unit=${
+            unitSelect.value
+          }&quantity=${quantityInput.value}`
+        );
+        const data = await res.json();
 
-  suggestionsBox.innerHTML = "";
-  if (!data.results.length) { suggestionsBox.style.display = "none"; return; }
+        suggestionsBox.innerHTML = "";
+        if (!data.results.length) {
+          suggestionsBox.style.display = "none";
+          return;
+        }
 
-  data.results.forEach(food => {
-    const item = document.createElement("li");
-    item.className = "list-group-item list-group-item-action";
-    item.dataset.id = food.id;
-    item.innerHTML = `<div><strong>${food.name}</strong></div>
-                      <small>${food.calories} kcal / ${food.serving_size || 100}${food.serving_unit || 'g'}</small>`;
-    item.onclick = async (e) => {
-      e.preventDefault();
-      searchInput.value = food.name;
-      foodIdInput.value = food.id;
-      suggestionsBox.style.display = "none";
-      await loadUnits(food.id);
-    };
-    suggestionsBox.appendChild(item);
-  });
+        data.results.forEach((food) => {
+          const item = document.createElement("li");
+          item.className = "list-group-item list-group-item-action";
+          item.dataset.id = food.id;
+          item.innerHTML = `<div><strong>${food.name}</strong></div>
+                      <small>${food.calories} kcal / ${
+            food.serving_size || 100
+          }${food.serving_unit || "g"}</small>`;
+          item.onclick = async (e) => {
+            e.preventDefault();
+            searchInput.value = food.name;
+            foodIdInput.value = food.id;
+            suggestionsBox.style.display = "none";
+            await loadUnits(food.id);
+          };
+          suggestionsBox.appendChild(item);
+        });
 
-  suggestionsBox.style.display = "block";
-}
+        suggestionsBox.style.display = "block";
+      }
 
-// Load food-specific measures
-async function loadUnits(foodId) {
-  const res = await fetch(`/member/get-measures/${foodId}`);
-  const data = await res.json();
-  unitSelect.innerHTML = "";
-  if (data.measures && data.measures.length) {
-    data.measures.forEach(m => {
-      const opt = document.createElement("option");
-      opt.value = m.measure_name;
-      opt.textContent = m.measure_name;
-      unitSelect.appendChild(opt);
-    });
-  } else {
-    ["g","kg","oz","lb","tsp","tbsp","cup"].forEach(u => {
-      const opt = document.createElement("option");
-      opt.value = u;
-      opt.textContent = u;
-      unitSelect.appendChild(opt);
-    });
-  }
-}
+      // Load food-specific measures
+      async function loadUnits(foodId) {
+        const res = await fetch(`/member/get-measures/${foodId}`);
+        const data = await res.json();
+        unitSelect.innerHTML = "";
+        if (data.measures && data.measures.length) {
+          data.measures.forEach((m) => {
+            const opt = document.createElement("option");
+            opt.value = m.measure_name;
+            opt.textContent = m.measure_name;
+            unitSelect.appendChild(opt);
+          });
+        } else {
+          ["g", "kg", "oz", "lb", "tsp", "tbsp", "cup"].forEach((u) => {
+            const opt = document.createElement("option");
+            opt.value = u;
+            opt.textContent = u;
+            unitSelect.appendChild(opt);
+          });
+        }
+      }
 
-// Event listeners
-searchInput.addEventListener("input", fetchFoods);
+      // Event listeners
+      searchInput.addEventListener("input", fetchFoods);
 
-// Auto-select top suggestion
-form.addEventListener("submit", async e => {
-  if (!foodIdInput.value && suggestionsBox.firstChild) {
-    const first = suggestionsBox.firstChild;
-    const dataId = first.dataset.id;
-    searchInput.value = first.querySelector("strong").textContent;
-    foodIdInput.value = dataId;
-    await loadUnits(dataId);
-  }
-});
+      // Auto-select top suggestion
+      form.addEventListener("submit", async (e) => {
+        if (!foodIdInput.value && suggestionsBox.firstChild) {
+          const first = suggestionsBox.firstChild;
+          const dataId = first.dataset.id;
+          searchInput.value = first.querySelector("strong").textContent;
+          foodIdInput.value = dataId;
+          await loadUnits(dataId);
+        }
+      });
 
-// Hide suggestions when clicking outside
-document.addEventListener("click", e => {
-  if (!searchInput.contains(e.target) && !suggestionsBox.contains(e.target)) {
-    suggestionsBox.style.display = "none";
-  }
-});
-</script>
-<script>
-async function deleteLog(logId) {
-  try {
-    const res = await fetch(`/member/delete-food-log/${logId}`, { method: "POST" });
-    const data = await res.json();
+      // Hide suggestions when clicking outside
+      document.addEventListener("click", (e) => {
+        if (
+          !searchInput.contains(e.target) &&
+          !suggestionsBox.contains(e.target)
+        ) {
+          suggestionsBox.style.display = "none";
+        }
+      });
+    </script>
+    <script>
+      async function deleteLog(logId) {
+        try {
+          const res = await fetch(`/member/delete-food-log/${logId}`, {
+            method: "POST",
+          });
+          const data = await res.json();
 
-    if (data.status === "success") {
-      const row = document.getElementById(`log-${logId}`);
-      if (row) row.remove();
-      showMessage(data.message, "success");
-      await updateTotals();
-      handleEmptyState();  // 👈 update the macros live
-    } else {
-      showMessage(data.message || "Error deleting log.", "danger");
-    }
-  } catch (err) {
-    console.error(err);
-    showMessage("Error connecting to server.", "danger");
-  }
-}
+          if (data.status === "success") {
+            const row = document.getElementById(`log-${logId}`);
+            if (row) row.remove();
+            showMessage(data.message, "success");
+            await updateTotals();
+            handleEmptyState(); // 👈 update the macros live
+          } else {
+            showMessage(data.message || "Error deleting log.", "danger");
+          }
+        } catch (err) {
+          console.error(err);
+          showMessage("Error connecting to server.", "danger");
+        }
+      }
 
-function formatNumber(value, decimals = 1) {
-  const num = Number(value || 0);
-  if (!Number.isFinite(num)) return "0";
-  if (Math.abs(num - Math.round(num)) < 1e-9) {
-    return Math.round(num).toString();
-  }
-  return num.toFixed(decimals);
-}
+      function formatNumber(value, decimals = 1) {
+        const num = Number(value || 0);
+        if (!Number.isFinite(num)) return "0";
+        if (Math.abs(num - Math.round(num)) < 1e-9) {
+          return Math.round(num).toString();
+        }
+        return num.toFixed(decimals);
+      }
 
-function ensureDefaultUnits() {
-  const defaultUnits = ["g", "kg", "oz", "lb", "tsp", "tbsp", "cup"];
-  if (unitSelect) {
-    unitSelect.innerHTML = "";
-    defaultUnits.forEach(u => {
-      const opt = document.createElement("option");
-      opt.value = u;
-      opt.textContent = u;
-      unitSelect.appendChild(opt);
-    });
-    unitSelect.value = "g";
-  }
-}
+      function ensureDefaultUnits() {
+        const defaultUnits = ["g", "kg", "oz", "lb", "tsp", "tbsp", "cup"];
+        if (unitSelect) {
+          unitSelect.innerHTML = "";
+          defaultUnits.forEach((u) => {
+            const opt = document.createElement("option");
+            opt.value = u;
+            opt.textContent = u;
+            unitSelect.appendChild(opt);
+          });
+          unitSelect.value = "g";
+        }
+      }
 
-function ensureTableVisible() {
-  const tableWrapper = document.getElementById("logsTableWrapper");
-  const emptyAlert = document.getElementById("noLogsAlert");
-  if (tableWrapper) tableWrapper.classList.remove("d-none");
-  if (emptyAlert) emptyAlert.classList.add("d-none");
-}
+      function ensureTableVisible() {
+        const tableWrapper = document.getElementById("logsTableWrapper");
+        const emptyAlert = document.getElementById("noLogsAlert");
+        if (tableWrapper) tableWrapper.classList.remove("d-none");
+        if (emptyAlert) emptyAlert.classList.add("d-none");
+      }
 
-function handleEmptyState() {
-  const tableWrapper = document.getElementById("logsTableWrapper");
-  const emptyAlert = document.getElementById("noLogsAlert");
-  const tbody = document.getElementById("foodLogsTableBody");
-  if (!tbody) return;
+      function handleEmptyState() {
+        const tableWrapper = document.getElementById("logsTableWrapper");
+        const emptyAlert = document.getElementById("noLogsAlert");
+        const tbody = document.getElementById("foodLogsTableBody");
+        if (!tbody) return;
 
-  const hasRows = Array.from(tbody.children).some(row => row.nodeType === 1);
+        const hasRows = Array.from(tbody.children).some(
+          (row) => row.nodeType === 1
+        );
 
-  if (hasRows) {
-    if (tableWrapper) tableWrapper.classList.remove("d-none");
-    if (emptyAlert) emptyAlert.classList.add("d-none");
-  } else {
-    if (tableWrapper) tableWrapper.classList.add("d-none");
-    if (emptyAlert) emptyAlert.classList.remove("d-none");
-  }
-}
+        if (hasRows) {
+          if (tableWrapper) tableWrapper.classList.remove("d-none");
+          if (emptyAlert) emptyAlert.classList.add("d-none");
+        } else {
+          if (tableWrapper) tableWrapper.classList.add("d-none");
+          if (emptyAlert) emptyAlert.classList.remove("d-none");
+        }
+      }
 
-function renderLogRow(log) {
-  if (!log) return;
-  ensureTableVisible();
-  const tbody = document.getElementById("foodLogsTableBody");
-  if (!tbody) return;
+      function renderLogRow(log) {
+        if (!log) return;
+        ensureTableVisible();
+        const tbody = document.getElementById("foodLogsTableBody");
+        if (!tbody) return;
 
-  const existing = document.getElementById(`log-${log.id}`);
-  if (existing) existing.remove();
+        const existing = document.getElementById(`log-${log.id}`);
+        if (existing) existing.remove();
 
-  const row = document.createElement("tr");
-  row.id = `log-${log.id}`;
-  row.innerHTML = `
+        const row = document.createElement("tr");
+        row.id = `log-${log.id}`;
+        row.innerHTML = `
     <td><strong>${log.food_name}</strong></td>
     <td>${formatNumber(log.quantity, 1)} ${log.unit}</td>
     <td>${formatNumber(log.calories, 1)}</td>
@@ -498,174 +851,185 @@ function renderLogRow(log) {
     <td>${formatNumber(log.carbs, 1)}g</td>
     <td>${formatNumber(log.fats, 1)}g</td>
     <td>
-      <form onsubmit="event.preventDefault(); deleteLog(${log.id});" style="display:inline;">
+      <form onsubmit="event.preventDefault(); deleteLog(${
+        log.id
+      });" style="display:inline;">
         <button type="submit" class="btn btn-sm btn-danger">✕</button>
       </form>
     </td>
   `;
 
-  tbody.prepend(row);
-  handleEmptyState();
-}
-
-async function updateTotals(prefetchedTotals) {
-  try {
-    let data = prefetchedTotals;
-    if (!data) {
-      const res = await fetch("/member/get-totals");
-      data = await res.json();
-    }
-
-    if (!data || data.status === "error") {
-      return null;
-    }
-
-    const proteinCard = document.querySelector(".macro-card.protein");
-    const carbsCard = document.querySelector(".macro-card.carbs");
-    const fatsCard = document.querySelector(".macro-card.fats");
-
-    if (proteinCard) {
-      const grams = Number(data.protein || 0);
-      const gramsLabel = proteinCard.querySelector("h3");
-      if (gramsLabel) gramsLabel.textContent = `${grams.toFixed(1)}g`;
-      const small = proteinCard.querySelector("small");
-      if (small) small.textContent = `${Math.round(grams * 4)} cal`;
-    }
-
-    if (carbsCard) {
-      const grams = Number(data.carbs || 0);
-      const gramsLabel = carbsCard.querySelector("h3");
-      if (gramsLabel) gramsLabel.textContent = `${grams.toFixed(1)}g`;
-      const small = carbsCard.querySelector("small");
-      if (small) small.textContent = `${Math.round(grams * 4)} cal`;
-    }
-
-    if (fatsCard) {
-      const grams = Number((data.fat ?? data.fats) || 0);
-      const gramsLabel = fatsCard.querySelector("h3");
-      if (gramsLabel) gramsLabel.textContent = `${grams.toFixed(1)}g`;
-      const small = fatsCard.querySelector("small");
-      if (small) small.textContent = `${Math.round(grams * 9)} cal`;
-    }
-
-
-    const goal = parseFloat("{{ user.calorie_goal or 2000 }}");
-    const calories = Number(data.calories || 0);
-    const percent = goal ? Math.min((calories / goal) * 100, 100) : 0;
-    const progressBar = document.querySelector(".progress-bar");
-    if (progressBar) {
-      progressBar.style.width = percent.toFixed(1) + "%";
-      progressBar.textContent = percent.toFixed(1) + "%";
-      progressBar.setAttribute("aria-valuenow", calories.toFixed(1));
-    }
-
-    const calorieText = document.querySelector("svg.progress-ring text[font-size='32']");
-    if (calorieText) {
-      calorieText.textContent = Math.round(calories);
-    }
-
-    const progressCircle = document.querySelector("svg.progress-ring circle:nth-of-type(2)");
-    if (progressCircle) {
-      const radius = parseFloat(progressCircle.getAttribute("r"));
-      const circumference = 2 * Math.PI * radius;
-      const offset = circumference - (goal ? Math.min(calories / goal, 1) * circumference : 0);
-      progressCircle.style.strokeDashoffset = offset.toFixed(2);
-    }
-
-
-    const remainElem = document.querySelector(".text-muted.mb-0 span");
-    if (remainElem) {
-      const remaining = goal - calories;
-      if (remaining > 0) {
-        remainElem.className = "text-success";
-        remainElem.textContent = `${Math.round(remaining)} calories remaining`;
-      } else {
-        remainElem.className = "text-warning";
-        remainElem.textContent = `${Math.round(-remaining)} calories over goal`;
+        tbody.prepend(row);
+        handleEmptyState();
       }
-    }
-    return data;
-  } catch (err) {
-    console.error("Error updating totals:", err);
-    return null;
-  }
-}
 
-function showMessage(msg, type) {
-  const alert = document.createElement("div");
-  alert.className = `alert alert-${type} text-center fixed-top`;
-  alert.style.zIndex = "2000";
-  alert.textContent = msg;
-  document.body.appendChild(alert);
-  setTimeout(() => alert.remove(), 2000);
-}
+      async function updateTotals(prefetchedTotals) {
+        try {
+          let data = prefetchedTotals;
+          if (!data) {
+            const res = await fetch("/member/get-totals");
+            data = await res.json();
+          }
 
-if (form) {
-  form.addEventListener("submit", async e => {
-    e.preventDefault();
-    const formData = new FormData(form);
-    if (!formData.get("food_id")) {
-      formData.set("food_search", searchInput.value.trim());
-    }
+          if (!data || data.status === "error") {
+            return null;
+          }
 
-    try {
-      const res = await fetch(form.action, {
-        method: "POST",
-        body: formData
-      });
-      const data = await res.json();
+          const proteinCard = document.querySelector(".macro-card.protein");
+          const carbsCard = document.querySelector(".macro-card.carbs");
+          const fatsCard = document.querySelector(".macro-card.fats");
 
-      if (data.status === "success") {
-        renderLogRow(data.log);
-        await updateTotals(data.totals);
-        showMessage(data.message, "success");
-        form.reset();
-        foodIdInput.value = "";
-        suggestionsBox.innerHTML = "";
-        suggestionsBox.style.display = "none";
-        ensureDefaultUnits();
-      } else {
-        showMessage(data.message || "Unable to add food.", "danger");
+          if (proteinCard) {
+            const grams = Number(data.protein || 0);
+            const gramsLabel = proteinCard.querySelector("h3");
+            if (gramsLabel) gramsLabel.textContent = `${grams.toFixed(1)}g`;
+            const small = proteinCard.querySelector("small");
+            if (small) small.textContent = `${Math.round(grams * 4)} cal`;
+          }
+
+          if (carbsCard) {
+            const grams = Number(data.carbs || 0);
+            const gramsLabel = carbsCard.querySelector("h3");
+            if (gramsLabel) gramsLabel.textContent = `${grams.toFixed(1)}g`;
+            const small = carbsCard.querySelector("small");
+            if (small) small.textContent = `${Math.round(grams * 4)} cal`;
+          }
+
+          if (fatsCard) {
+            const grams = Number((data.fat ?? data.fats) || 0);
+            const gramsLabel = fatsCard.querySelector("h3");
+            if (gramsLabel) gramsLabel.textContent = `${grams.toFixed(1)}g`;
+            const small = fatsCard.querySelector("small");
+            if (small) small.textContent = `${Math.round(grams * 9)} cal`;
+          }
+
+          const goal = parseFloat("{{ user.calorie_goal or 2000 }}");
+          const calories = Number(data.calories || 0);
+          const percent = goal ? Math.min((calories / goal) * 100, 100) : 0;
+          const progressBar = document.querySelector(".progress-bar");
+          if (progressBar) {
+            progressBar.style.width = percent.toFixed(1) + "%";
+            progressBar.textContent = percent.toFixed(1) + "%";
+            progressBar.setAttribute("aria-valuenow", calories.toFixed(1));
+          }
+
+          const calorieText = document.querySelector(
+            "svg.progress-ring text[font-size='32']"
+          );
+          if (calorieText) {
+            calorieText.textContent = Math.round(calories);
+          }
+
+          const progressCircle = document.querySelector(
+            "svg.progress-ring circle:nth-of-type(2)"
+          );
+          if (progressCircle) {
+            const radius = parseFloat(progressCircle.getAttribute("r"));
+            const circumference = 2 * Math.PI * radius;
+            const offset =
+              circumference -
+              (goal ? Math.min(calories / goal, 1) * circumference : 0);
+            progressCircle.style.strokeDashoffset = offset.toFixed(2);
+          }
+
+          const remainElem = document.querySelector(".text-muted.mb-0 span");
+          if (remainElem) {
+            const remaining = goal - calories;
+            if (remaining > 0) {
+              remainElem.className = "text-success";
+              remainElem.textContent = `${Math.round(
+                remaining
+              )} calories remaining`;
+            } else {
+              remainElem.className = "text-warning";
+              remainElem.textContent = `${Math.round(
+                -remaining
+              )} calories over goal`;
+            }
+          }
+          return data;
+        } catch (err) {
+          console.error("Error updating totals:", err);
+          return null;
+        }
       }
-    } catch (err) {
-      console.error(err);
-      showMessage("Error adding food.", "danger");
-    }
-  });
-}
 
-const customForm = document.getElementById("customFoodForm");
-if (customForm) {
-  customForm.addEventListener("submit", async e => {
-    e.preventDefault();
-    const formData = new FormData(customForm);
-
-    try {
-      const res = await fetch(customForm.action, {
-        method: "POST",
-        body: formData
-      });
-      const data = await res.json();
-
-      if (data.status === "success") {
-        renderLogRow(data.log);
-        await updateTotals(data.totals);
-        showMessage(data.message, "success");
-        customForm.reset();
-        ensureDefaultUnits();
-      } else {
-        showMessage(data.message || "Unable to add custom food.", "danger");
+      function showMessage(msg, type) {
+        const alert = document.createElement("div");
+        alert.className = `alert alert-${type} text-center fixed-top`;
+        alert.style.zIndex = "2000";
+        alert.textContent = msg;
+        document.body.appendChild(alert);
+        setTimeout(() => alert.remove(), 2000);
       }
-    } catch (err) {
-      console.error(err);
-      showMessage("Error adding food.", "danger");
-    }
-  });
-}
 
-handleEmptyState();
-</script>
+      if (form) {
+        form.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const formData = new FormData(form);
+          if (!formData.get("food_id")) {
+            formData.set("food_search", searchInput.value.trim());
+          }
 
-</body>
+          try {
+            const res = await fetch(form.action, {
+              method: "POST",
+              body: formData,
+            });
+            const data = await res.json();
 
+            if (data.status === "success") {
+              renderLogRow(data.log);
+              await updateTotals(data.totals);
+              showMessage(data.message, "success");
+              form.reset();
+              foodIdInput.value = "";
+              suggestionsBox.innerHTML = "";
+              suggestionsBox.style.display = "none";
+              ensureDefaultUnits();
+            } else {
+              showMessage(data.message || "Unable to add food.", "danger");
+            }
+          } catch (err) {
+            console.error(err);
+            showMessage("Error adding food.", "danger");
+          }
+        });
+      }
+
+      const customForm = document.getElementById("customFoodForm");
+      if (customForm) {
+        customForm.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const formData = new FormData(customForm);
+
+          try {
+            const res = await fetch(customForm.action, {
+              method: "POST",
+              body: formData,
+            });
+            const data = await res.json();
+
+            if (data.status === "success") {
+              renderLogRow(data.log);
+              await updateTotals(data.totals);
+              showMessage(data.message, "success");
+              customForm.reset();
+              ensureDefaultUnits();
+            } else {
+              showMessage(
+                data.message || "Unable to add custom food.",
+                "danger"
+              );
+            }
+          } catch (err) {
+            console.error(err);
+            showMessage("Error adding food.", "danger");
+          }
+        });
+      }
+
+      handleEmptyState();
+    </script>
+  </body>
 </html>
