@@ -90,27 +90,15 @@ class UserFoodLog(db.Model):
     
     @property
     def scaled(self):
+        from app.routes.member import _scale_food_nutrients
         quantity_in_grams = self.quantity_in_grams()
-        serving_grams = self.food.grams_per_unit or 100
-        factor = quantity_in_grams / serving_grams
-
-        base_protein = self.food.protein_g or 0
-        base_carbs = self.food.carbs_g or 0
-        base_fats = self.food.fats_g or 0
-        base_calories = self.food.calories or 0
-
-        macro_calories = (base_protein * 4) + (base_carbs * 4) + (base_fats * 9)
-        calories = base_calories
-        if base_calories and macro_calories:
-            ratio = base_calories / macro_calories
-            if ratio > 2 or ratio < 0.5:
-                calories = macro_calories
+        scaled = _scale_food_nutrients(self.food, quantity_in_grams)
 
         return {
-            "calories": round(calories * factor, 1),
-            "protein": round(base_protein * factor, 1),
-            "carbs": round(base_carbs * factor, 1),
-            "fats": round(base_fats * factor, 1)
+            "calories": round(scaled["calories"], 1),
+            "protein": round(scaled["protein"], 1),
+            "carbs": round(scaled["carbs"], 1),
+            "fats": round(scaled["fats"], 1)
         }
 class Progress(db.Model):
     id = db.Column(db.Integer, primary_key=True)

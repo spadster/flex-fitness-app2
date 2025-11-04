@@ -149,7 +149,7 @@
       <h3>Log Food</h3>
 
       <!-- Add Food Form -->
-      <form method="POST" id="foodForm" class="mb-4" action="{{ url_for('member.dashboard') }}">
+      <form method="POST" id="foodForm" class="mb-4" action="{{ url_for('member.log_food') }}">
         <div class="input-group position-relative">
           <input type="text" id="food_search" name="food_search" class="form-control"
                 placeholder="Search or enter food..." autocomplete="off" required>
@@ -174,7 +174,7 @@
       <div class="card mb-4">
         <div class="card-body">
           <h5 class="card-title">Add Custom Food</h5>
-          <form method="POST" action="{{ url_for('member.add_food') }}">
+          <form method="POST" id = "customFoodForm" action="{{ url_for('member.log_food') }}">
             <div class="mb-2">
               <input type="text" name="food_name" class="form-control" placeholder="Food Name" required>
             </div>
@@ -215,44 +215,43 @@
 
       <!-- Display Logged Foods -->
       <h4 class="mb-3">Today's Foods</h4>
-      {% if user_food_logs %}
-      <div class="table-responsive">
-        <table class="table table-hover">
-          <thead class="table-light">
-            <tr>
-              <th>Food</th>
-              <th>Quantity</th>
-              <th>Calories</th>
-              <th>Protein</th>
-              <th>Carbs</th>
-              <th>Fat</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for log in user_food_logs %}
-            <tr id="log-{{ log.id }}">
-              <td><strong>{{ log.food.name }}</strong></td>
-              <td>{{ log.quantity }} {{ log.unit }}</td>
-              <td>{{ log.scaled.calories | round(1) }}</td>
-              <td>{{ log.scaled.protein | round(1) }}g</td>
-              <td>{{ log.scaled.carbs | round(1) }}g</td>
-              <td>{{ log.scaled.fats | round(1) }}g</td>
-              <td>
-                <form onsubmit="event.preventDefault(); deleteLog({{ log.id }});" style="display:inline;">
-                  <button type="submit" class="btn btn-sm btn-danger">✕</button>
-                </form>
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+      <div id="foodLogsContainer">
+        <div class="table-responsive {% if not user_food_logs %}d-none{% endif %}" id="logsTableWrapper">
+          <table class="table table-hover">
+            <thead class="table-light">
+              <tr>
+                <th>Food</th>
+                <th>Quantity</th>
+                <th>Calories</th>
+                <th>Protein</th>
+                <th>Carbs</th>
+                <th>Fat</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="foodLogsTableBody">
+              {% for log in user_food_logs %}
+              <tr id="log-{{ log.id }}">
+                <td><strong>{{ log.food.name }}</strong></td>
+                <td>{{ log.quantity }} {{ log.unit }}</td>
+                <td>{{ log.scaled.calories | round(1) }}</td>
+                <td>{{ log.scaled.protein | round(1) }}g</td>
+                <td>{{ log.scaled.carbs | round(1) }}g</td>
+                <td>{{ log.scaled.fats | round(1) }}g</td>
+                <td>
+                  <form onsubmit="event.preventDefault(); deleteLog({{ log.id }});" style="display:inline;">
+                    <button type="submit" class="btn btn-sm btn-danger">✕</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="alert alert-info {% if user_food_logs %}d-none{% endif %}" id="noLogsAlert">
+          <i class="bi bi-info-circle"></i> No foods logged yet today. Start tracking your meals above!
+        </div>
       </div>
-      {% else %}
-      <div class="alert alert-info">
-        <i class="bi bi-info-circle"></i> No foods logged yet today. Start tracking your meals above!
-      </div>
-      {% endif %}
       {% endif %}
 
       <!-- Calendar view (server-rendered, no JS) -->
@@ -422,7 +421,8 @@ async function deleteLog(logId) {
       const row = document.getElementById(`log-${logId}`);
       if (row) row.remove();
       showMessage(data.message, "success");
-      await updateTotals();  // 👈 update the macros live
+      await updateTotals();
+      handleEmptyState();  // 👈 update the macros live
     } else {
       showMessage(data.message || "Error deleting log.", "danger");
     }
@@ -432,41 +432,165 @@ async function deleteLog(logId) {
   }
 }
 
-</script>
-<script>
-async function updateTotals() {
-  try {
-    const res = await fetch("/member/get-totals");
-    const data = await res.json();
+function formatNumber(value, decimals = 1) {
+  const num = Number(value || 0);
+  if (!Number.isFinite(num)) return "0";
+  if (Math.abs(num - Math.round(num)) < 1e-9) {
+    return Math.round(num).toString();
+  }
+  return num.toFixed(decimals);
+}
 
-    // Update the macro cards
-    document.querySelector(".macro-card.protein h3").textContent = data.protein.toFixed(1) + "g";
-    document.querySelector(".macro-card.carbs h3").textContent = data.carbs.toFixed(1) + "g";
-    document.querySelector(".macro-card.fats h3").textContent = data.fats.toFixed(1) + "g";
-
-    // Update the progress bar + calorie text
-    const goal = parseFloat("{{ user.calorie_goal or 2000 }}");
-    const percent = Math.min((data.calories / goal) * 100, 100).toFixed(1);
-    document.querySelector(".progress-bar").style.width = percent + "%";
-    document.querySelector(".progress-bar").textContent = percent + "%";
-    document.querySelector("text[text-anchor='middle'][font-size='32']").textContent = Math.round(data.calories);
-
-    // Remaining calories text
-    const remaining = goal - data.calories;
-    const remainElem = document.querySelector(".text-muted.mb-0 span");
-    if (remaining > 0) {
-      remainElem.className = "text-success";
-      remainElem.textContent = `${Math.round(remaining)} calories remaining`;
-    } else {
-      remainElem.className = "text-warning";
-      remainElem.textContent = `${Math.round(-remaining)} calories over goal`;
-    }
-  } catch (err) {
-    console.error("Error updating totals:", err);
+function ensureDefaultUnits() {
+  const defaultUnits = ["g", "kg", "oz", "lb", "tsp", "tbsp", "cup"];
+  if (unitSelect) {
+    unitSelect.innerHTML = "";
+    defaultUnits.forEach(u => {
+      const opt = document.createElement("option");
+      opt.value = u;
+      opt.textContent = u;
+      unitSelect.appendChild(opt);
+    });
+    unitSelect.value = "g";
   }
 }
-</script>
-<script>
+
+function ensureTableVisible() {
+  const tableWrapper = document.getElementById("logsTableWrapper");
+  const emptyAlert = document.getElementById("noLogsAlert");
+  if (tableWrapper) tableWrapper.classList.remove("d-none");
+  if (emptyAlert) emptyAlert.classList.add("d-none");
+}
+
+function handleEmptyState() {
+  const tableWrapper = document.getElementById("logsTableWrapper");
+  const emptyAlert = document.getElementById("noLogsAlert");
+  const tbody = document.getElementById("foodLogsTableBody");
+  if (!tbody) return;
+
+  const hasRows = Array.from(tbody.children).some(row => row.nodeType === 1);
+
+  if (hasRows) {
+    if (tableWrapper) tableWrapper.classList.remove("d-none");
+    if (emptyAlert) emptyAlert.classList.add("d-none");
+  } else {
+    if (tableWrapper) tableWrapper.classList.add("d-none");
+    if (emptyAlert) emptyAlert.classList.remove("d-none");
+  }
+}
+
+function renderLogRow(log) {
+  if (!log) return;
+  ensureTableVisible();
+  const tbody = document.getElementById("foodLogsTableBody");
+  if (!tbody) return;
+
+  const existing = document.getElementById(`log-${log.id}`);
+  if (existing) existing.remove();
+
+  const row = document.createElement("tr");
+  row.id = `log-${log.id}`;
+  row.innerHTML = `
+    <td><strong>${log.food_name}</strong></td>
+    <td>${formatNumber(log.quantity, 1)} ${log.unit}</td>
+    <td>${formatNumber(log.calories, 1)}</td>
+    <td>${formatNumber(log.protein, 1)}g</td>
+    <td>${formatNumber(log.carbs, 1)}g</td>
+    <td>${formatNumber(log.fats, 1)}g</td>
+    <td>
+      <form onsubmit="event.preventDefault(); deleteLog(${log.id});" style="display:inline;">
+        <button type="submit" class="btn btn-sm btn-danger">✕</button>
+      </form>
+    </td>
+  `;
+
+  tbody.prepend(row);
+  handleEmptyState();
+}
+
+async function updateTotals(prefetchedTotals) {
+  try {
+    let data = prefetchedTotals;
+    if (!data) {
+      const res = await fetch("/member/get-totals");
+      data = await res.json();
+    }
+
+    if (!data || data.status === "error") {
+      return null;
+    }
+
+    const proteinCard = document.querySelector(".macro-card.protein");
+    const carbsCard = document.querySelector(".macro-card.carbs");
+    const fatsCard = document.querySelector(".macro-card.fats");
+
+    if (proteinCard) {
+      const grams = Number(data.protein || 0);
+      const gramsLabel = proteinCard.querySelector("h3");
+      if (gramsLabel) gramsLabel.textContent = `${grams.toFixed(1)}g`;
+      const small = proteinCard.querySelector("small");
+      if (small) small.textContent = `${Math.round(grams * 4)} cal`;
+    }
+
+    if (carbsCard) {
+      const grams = Number(data.carbs || 0);
+      const gramsLabel = carbsCard.querySelector("h3");
+      if (gramsLabel) gramsLabel.textContent = `${grams.toFixed(1)}g`;
+      const small = carbsCard.querySelector("small");
+      if (small) small.textContent = `${Math.round(grams * 4)} cal`;
+    }
+
+    if (fatsCard) {
+      const grams = Number((data.fat ?? data.fats) || 0);
+      const gramsLabel = fatsCard.querySelector("h3");
+      if (gramsLabel) gramsLabel.textContent = `${grams.toFixed(1)}g`;
+      const small = fatsCard.querySelector("small");
+      if (small) small.textContent = `${Math.round(grams * 9)} cal`;
+    }
+
+
+    const goal = parseFloat("{{ user.calorie_goal or 2000 }}");
+    const calories = Number(data.calories || 0);
+    const percent = goal ? Math.min((calories / goal) * 100, 100) : 0;
+    const progressBar = document.querySelector(".progress-bar");
+    if (progressBar) {
+      progressBar.style.width = percent.toFixed(1) + "%";
+      progressBar.textContent = percent.toFixed(1) + "%";
+      progressBar.setAttribute("aria-valuenow", calories.toFixed(1));
+    }
+
+    const calorieText = document.querySelector("svg.progress-ring text[font-size='32']");
+    if (calorieText) {
+      calorieText.textContent = Math.round(calories);
+    }
+
+    const progressCircle = document.querySelector("svg.progress-ring circle:nth-of-type(2)");
+    if (progressCircle) {
+      const radius = parseFloat(progressCircle.getAttribute("r"));
+      const circumference = 2 * Math.PI * radius;
+      const offset = circumference - (goal ? Math.min(calories / goal, 1) * circumference : 0);
+      progressCircle.style.strokeDashoffset = offset.toFixed(2);
+    }
+
+
+    const remainElem = document.querySelector(".text-muted.mb-0 span");
+    if (remainElem) {
+      const remaining = goal - calories;
+      if (remaining > 0) {
+        remainElem.className = "text-success";
+        remainElem.textContent = `${Math.round(remaining)} calories remaining`;
+      } else {
+        remainElem.className = "text-warning";
+        remainElem.textContent = `${Math.round(-remaining)} calories over goal`;
+      }
+    }
+    return data;
+  } catch (err) {
+    console.error("Error updating totals:", err);
+    return null;
+  }
+}
+
 function showMessage(msg, type) {
   const alert = document.createElement("div");
   alert.className = `alert alert-${type} text-center fixed-top`;
@@ -475,7 +599,73 @@ function showMessage(msg, type) {
   document.body.appendChild(alert);
   setTimeout(() => alert.remove(), 2000);
 }
+
+if (form) {
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    const formData = new FormData(form);
+    if (!formData.get("food_id")) {
+      formData.set("food_search", searchInput.value.trim());
+    }
+
+    try {
+      const res = await fetch(form.action, {
+        method: "POST",
+        body: formData
+      });
+      const data = await res.json();
+
+      if (data.status === "success") {
+        renderLogRow(data.log);
+        await updateTotals(data.totals);
+        showMessage(data.message, "success");
+        form.reset();
+        foodIdInput.value = "";
+        suggestionsBox.innerHTML = "";
+        suggestionsBox.style.display = "none";
+        ensureDefaultUnits();
+      } else {
+        showMessage(data.message || "Unable to add food.", "danger");
+      }
+    } catch (err) {
+      console.error(err);
+      showMessage("Error adding food.", "danger");
+    }
+  });
+}
+
+const customForm = document.getElementById("customFoodForm");
+if (customForm) {
+  customForm.addEventListener("submit", async e => {
+    e.preventDefault();
+    const formData = new FormData(customForm);
+
+    try {
+      const res = await fetch(customForm.action, {
+        method: "POST",
+        body: formData
+      });
+      const data = await res.json();
+
+      if (data.status === "success") {
+        renderLogRow(data.log);
+        await updateTotals(data.totals);
+        showMessage(data.message, "success");
+        customForm.reset();
+        ensureDefaultUnits();
+      } else {
+        showMessage(data.message || "Unable to add custom food.", "danger");
+      }
+    } catch (err) {
+      console.error(err);
+      showMessage("Error adding food.", "danger");
+    }
+  });
+}
+
+handleEmptyState();
 </script>
 
 </body>
+
 </html>

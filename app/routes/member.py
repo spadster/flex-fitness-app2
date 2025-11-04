@@ -97,14 +97,7 @@ def dashboard():
     # Fetch today's logs + compute totals (default view)
     # -----------------------------
     user_food_logs = UserFoodLog.query.filter_by(user_id=user.id, log_date=today).all()
-    totals = {"calories": 0, "protein": 0, "carbs": 0, "fat": 0}
-
-    for log in user_food_logs:
-        scaled = log.scaled  # uses your existing @property
-        totals["calories"] += scaled["calories"]
-        totals["protein"] += scaled["protein"]
-        totals["carbs"] += scaled["carbs"]
-        totals["fat"] += scaled["fats"]
+    totals = _calculate_daily_totals(user.id, today)
 
     # ----------
     # Calendar support (server-rendered, no JS required)
@@ -201,12 +194,13 @@ def dashboard():
                             total_fats = 0.0
                             for fl in fls:
                                 if getattr(fl, 'food', None):
-                                    serving = (getattr(fl.food, 'serving_size', 100) or 100)
-                                    qty_factor = (getattr(fl, 'quantity', 0) or 0) / serving
-                                    total_cals += qty_factor * (getattr(fl.food, 'calories', 0) or 0)
-                                    total_protein += qty_factor * (getattr(fl.food, 'protein_g', getattr(fl.food, 'protein', 0)) or 0)
-                                    total_carbs += qty_factor * (getattr(fl.food, 'carbs_g', getattr(fl.food, 'carbs', 0)) or 0)
-                                    total_fats += qty_factor * (getattr(fl.food, 'fats_g', getattr(fl.food, 'fat', 0)) or 0)
+                                    grams_logged = fl.quantity_in_grams() if hasattr(fl, 'quantity_in_grams') else getattr(fl, 'quantity', 0)
+                                    scaled = _scale_food_nutrients(fl.food, grams_logged)
+                                    total_cals += scaled["calories"]
+                                    total_protein += scaled["protein"]
+                                    total_carbs += scaled["carbs"]
+                                    total_fats += scaled["fats"]
+
                             food_calories = int(total_cals) if total_cals else None
                             food_protein = round(total_protein, 1) if total_protein else None
                             food_carbs = round(total_carbs, 1) if total_carbs else None
@@ -286,16 +280,12 @@ def dashboard():
                     if not match:
                         continue
                     if getattr(fl, 'food', None):
-                        serving = (getattr(fl.food, 'serving_size', 100) or 100)
-                        qty_factor = (getattr(fl, 'quantity', 0) or 0) / serving
-                        cals = qty_factor * (getattr(fl.food, 'calories', 0) or 0)
-                        prot = qty_factor * (getattr(fl.food, 'protein_g', getattr(fl.food, 'protein', 0)) or 0)
-                        carbs = qty_factor * (getattr(fl.food, 'carbs_g', getattr(fl.food, 'carbs', 0)) or 0)
-                        fats = qty_factor * (getattr(fl.food, 'fats_g', getattr(fl.food, 'fat', 0)) or 0)
-                        tot += cals
-                        total_protein += prot
-                        total_carbs += carbs
-                        total_fats += fats
+                        grams_logged = fl.quantity_in_grams() if hasattr(fl, 'quantity_in_grams') else getattr(fl, 'quantity', 0)
+                        scaled = _scale_food_nutrients(fl.food, grams_logged)
+                        tot += scaled["calories"]
+                        total_protein += scaled["protein"]
+                        total_carbs += scaled["carbs"]
+                        total_fats += scaled["fats"]
                 selected_food_calories = int(tot) if tot else None
                 selected_food_protein = round(total_protein, 1) if total_protein else None
                 selected_food_carbs = round(total_carbs, 1) if total_carbs else None
@@ -343,34 +333,82 @@ UNIT_TO_GRAMS = {
     "cup": 240
 }
 
-def scaled_macros(food: Food, quantity_in_grams: float):
-    serving_grams = food.serving_size or 100
-    if not serving_grams:
-        serving_grams = 100
+def _serving_grams(food: Food) -> float:
+    """Return the gram weight that nutrient data is based on for a food."""
+    for value in (getattr(food, "serving_size", None), getattr(food, "grams_per_unit", None)):
+        if value and value > 0:
+            return float(value)
+    return 100.0
 
-    factor = quantity_in_grams / serving_grams if serving_grams else 0
 
-    base_protein = food.protein_g or 0
-    base_carbs = food.carbs_g or 0
-    base_fats = food.fats_g or 0
-    base_calories = food.calories or 0
+def _scale_food_nutrients(food: Food, quantity_in_grams: float) -> dict:
+    """Scale a food's macro profile to a quantity in grams, inferring calories when missing."""
+    if not food:
+        return {"calories": 0.0, "protein": 0.0, "carbs": 0.0, "fats": 0.0}
+    grams = float(quantity_in_grams or 0.0)
+    serving_grams = _serving_grams(food)
+    factor = grams/serving_grams if serving_grams else 0.0
+
+    base_protein = float(food.protein_g or 0.0)
+    base_carbs = float(food.carbs_g or 0.0)
+    base_fats = float(food.fats_g or 0.0)
+    base_calories = float(food.calories or 0.0)
+
 
     macro_calories = (base_protein * 4) + (base_carbs * 4) + (base_fats * 9)
-    calories = base_calories
+    adjusted_calories = base_calories
 
     if macro_calories:
-        if not base_calories:
-            calories = macro_calories
+        if not adjusted_calories:
+            adjusted_calories = macro_calories
         else:
-            ratio = base_calories / macro_calories if macro_calories else 0
-            if ratio > 2 or ratio < 0.5:
-                calories = macro_calories
+            ratio = adjusted_calories / macro_calories if macro_calories else 1
+            if ratio > 2 or ratio < 0.5:    
+                adjusted_calories = macro_calories
+
 
     return {
-        "calories": round(calories * factor, 1),
-        "protein": round(base_protein * factor, 1),
-        "carbs": round(base_carbs * factor, 1),
-        "fats": round(base_fats * factor, 1),
+        "calories": adjusted_calories * factor,
+        "protein": base_protein * factor,
+        "carbs": base_carbs * factor,
+        "fats": base_fats * factor
+    }
+
+
+def _calculate_daily_totals(user_id: int, target_date: date) -> dict:
+    logs = UserFoodLog.query.filter_by(user_id=user_id, log_date=target_date).all()
+    totals = {"calories": 0.0, "protein": 0.0, "carbs": 0.0, "fat": 0.0}
+
+    for log in logs:
+        scaled = _scale_food_nutrients(log.food, log.quantity_in_grams())
+        totals["calories"] += scaled["calories"]
+        totals["protein"] += scaled["protein"]
+        totals["carbs"] += scaled["carbs"]
+        totals["fat"] += scaled["fats"]
+
+    return {key: round(value, 1) for key, value in totals.items()}
+
+
+@member_bp.route("/get-totals")
+def get_totals():
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"status": "error", "message": "Please log in first."}), 403
+
+    today = datetime.utcnow().date()
+    totals = _calculate_daily_totals(user_id, today)
+    totals["fats"] = totals["fat"]
+    return jsonify(totals)
+
+
+def scaled_macros(food: Food, quantity_in_grams: float):
+    scaled = _scale_food_nutrients(food, quantity_in_grams)
+
+    return {
+        "calories": round(scaled["calories"], 1),
+        "protein": round(scaled["protein"], 1),
+        "carbs": round(scaled["carbs"], 1),
+        "fats": round(scaled["fats"], 1),
     }
 
 def scale_nutrients(food_id, quantity, unit):
@@ -436,68 +474,114 @@ def search_foods():
 
     return jsonify({"results": results})
 
-@member_bp.route("/add-food", methods=["POST"])
-def add_food():
+@member_bp.route("/log-food", methods=["POST"])
+def log_food():
     user_id = session.get("user_id")
     if not user_id:
-        flash("Please log in first.", "danger")
-        return redirect(url_for("auth.login_member"))
+        return jsonify({"status": "error", "message": "Please log in first."}), 403
 
-    food_name = request.form.get("food_name", "").strip()
-    quantity = float(request.form.get("quantity") or 1)
-    unit = request.form.get("unit", "g").strip().lower()  # ← Make sure it's lowercase
-    food_id = request.form.get("food_id")
+    data = request.form if request.form else request.get_json(silent=True) or {}
+
+    quantity_raw = data.get("log_quantity") or data.get("quantity")
+    unit_input = (data.get("unit") or "g").strip().lower()
+    food_id = data.get("food_id")
+
+    try:
+        quantity = float(quantity_raw)
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "Please enter a valid quantity."}), 400
+
+    if quantity <= 0:
+        return jsonify({"status": "error", "message": "Quantity must be greater than zero."}), 400
+
     today = datetime.utcnow().date()
+    food = None
+    created_food = False
 
     if food_id:
-        # Existing food from DB
         food = Food.query.get(int(food_id))
         if not food:
-            flash("Food not found.", "danger")
-            return redirect(url_for("member.dashboard"))
+            return jsonify({"status": "error", "message": "Selected food not found."}), 404
     else:
-        # New food (custom)
-        calories = float(request.form.get("calories") or 0)
-        protein_g = float(request.form.get("protein_g") or 0)
-        carbs_g = float(request.form.get("carbs_g") or 0)
-        fats_g = float(request.form.get("fats_g") or 0)
+        search_name = (data.get("food_name") or data.get("food_search") or "").strip()
+        if not search_name:
+            return jsonify({"status": "error", "message": "Please select a food to log."}), 400
 
-        food = Food(
-            name=food_name,
-            calories=calories,
-            protein_g=protein_g,
-            carbs_g=carbs_g,
-            fats_g=fats_g,
-            source_id=None,
-            serving_size=100,
-            serving_unit="g"
-        )
-        db.session.add(food)
-        db.session.commit()
+        custom_fields = [data.get("calories"), data.get("protein_g"), data.get("carbs_g"), data.get("fats_g")]
+        has_custom_macros = any(value not in (None, "", "0", "0.0") for value in custom_fields)
 
-    # ✅ Convert to grams BEFORE saving (same as dashboard route)
-    measure = FoodMeasure.query.filter_by(food_id=food.id, measure_name=unit).first()
-    
+        if has_custom_macros:
+            try:
+                calories = float(data.get("calories") or 0)
+                protein_g = float(data.get("protein_g") or 0)
+                carbs_g = float(data.get("carbs_g") or 0)
+                fats_g = float(data.get("fats_g") or 0)
+            except (TypeError, ValueError):
+                return jsonify({"status": "error", "message": "Invalid nutrient values for custom food."}), 400
+
+            food = Food(
+                name=search_name,
+                calories=calories or None,
+                protein_g=protein_g or None,
+                carbs_g=carbs_g or None,
+                fats_g=fats_g or None,
+                source_id=None,
+                serving_size=100,
+                serving_unit="g",
+                grams_per_unit=100
+            )
+            db.session.add(food)
+            db.session.commit()
+            created_food = True
+        else:
+            food = Food.query.filter(Food.name.ilike(f"%{search_name}%")).first()
+            if not food:
+                return jsonify({"status": "error", "message": "No matching foods found."}), 404
+
+    measure = None
+    if food and food.id:
+        measure = FoodMeasure.query.filter_by(food_id=food.id, measure_name=unit_input).first()
+
     if measure:
         grams = quantity * measure.grams
-    elif unit in UNIT_TO_GRAMS:
-        grams = quantity * UNIT_TO_GRAMS[unit]
+    elif unit_input in UNIT_TO_GRAMS:
+        grams = quantity * UNIT_TO_GRAMS[unit_input]
     else:
-        grams = quantity  # assume grams by default
+        grams = quantity
 
-    # Save user log (always in grams)
     log = UserFoodLog(
         user_id=user_id,
         food_id=food.id,
-        quantity=grams,  # ← Store as grams
-        unit="g",        # ← Always "g"
+        quantity=grams,
+        unit="g",
         log_date=today
     )
     db.session.add(log)
     db.session.commit()
 
-    flash(f"Added {quantity} {unit} of {food.name}!", "success")
-    return redirect(url_for("member.dashboard"))
+    scaled = _scale_food_nutrients(food, grams)
+    totals = _calculate_daily_totals(user_id, today)
+    totals["fats"] = totals["fat"]
+
+    message = f"Added {quantity:g} {unit_input} of {food.name}!"
+    log_payload = {
+        "id": log.id,
+        "food_name": food.name,
+        "quantity": round(log.quantity, 2),
+        "unit": log.unit,
+        "calories": round(scaled["calories"], 1),
+        "protein": round(scaled["protein"], 1),
+        "carbs": round(scaled["carbs"], 1),
+        "fats": round(scaled["fats"], 1)
+    }
+
+    return jsonify({
+        "status": "success",
+        "message": message,
+        "log": log_payload,
+        "totals": totals,
+        "created_food": created_food
+    })
 
 # -----------------------------
 # View Progress
