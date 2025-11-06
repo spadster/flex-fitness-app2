@@ -20,6 +20,17 @@
       <div class="card-body">
         <h3 class="card-title text-center mb-4">Trainer Login</h3>
 
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, msg in messages %}
+              <div class="alert alert-{{ category if category else 'info' }} alert-dismissible fade show" role="alert">
+                {{ msg }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+              </div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
         <form action="{{ url_for('auth.login_trainer') }}" method="POST">
           <div class="mb-3">
             <label for="trainerEmail" class="form-label">Email</label>
@@ -31,6 +42,9 @@
           </div>
           <button type="submit" class="btn btn-primary w-100">Login</button>
         </form>
+
+        <a href="{{ url_for('auth.request_password_reset') }}" class="btn btn-outline-secondary w-100 mt-3">Change Password</a>
+        <a href="{{ url_for('auth.resend_verification') }}" class="btn btn-link w-100 mt-2">Resend Verification Email</a>
 
         <div class="text-center mt-3">
           <a href="{{ url_for('main.home')}}">Back</a>

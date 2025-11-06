@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% if meal %}Edit{% else %}Create{% endif %} Meal | Trainer</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+</head>
+<body class="bg-light">
+  <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <div class="container">
+      <a class="navbar-brand ms-auto fw" href="{{ url_for('main.home') }}">Temp</a>
+      <a href="{{ url_for('auth.logout') }}" class="btn btn-outline-light ms-3">Log Out</a>
+    </div>
+  </nav>
+
+  <div class="container mt-4 mb-5">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div>
+        <h1 class="h3 mb-1">{% if meal %}Edit{% else %}Create{% endif %} Meal</h1>
+        {% if client %}
+          <div class="text-muted">Client: {{ client.first_name }} {{ client.last_name }}</div>
+        {% else %}
+          <div class="text-muted">Meal will be available to all of your clients.</div>
+        {% endif %}
+      </div>
+      {% if client %}
+        <a href="{{ url_for('trainer.client_detail', member_id=client.id) }}" class="btn btn-outline-secondary">Back to Client</a>
+      {% else %}
+        <a href="{{ url_for('trainer.dashboard_trainer') }}" class="btn btn-outline-secondary">Back to Dashboard</a>
+      {% endif %}
+    </div>
+
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <form method="POST" id="mealForm">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Meal Name</label>
+              <input type="text" name="meal_name" class="form-control" value="{{ meal_data.name if meal_data and meal_data.name else '' }}" required />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Tab</label>
+              <select name="meal_slot" class="form-select">
+                {% for slot, label in meal_slot_labels.items() %}
+                  <option value="{{ slot }}" {% if meal_data and meal_data.slot == slot %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-12">
+              <label class="form-label fw-semibold">Description <span class="text-muted">(optional)</span></label>
+              <textarea name="description" class="form-control" rows="2" placeholder="Describe when or how this meal should be used.">{{ meal_data.description if meal_data and meal_data.description else '' }}</textarea>
+            </div>
+          </div>
+
+          <hr class="my-4">
+
+          <div class="mb-3">
+            <h5 class="d-flex justify-content-between align-items-center">
+              <span>Ingredients</span>
+              <small class="text-muted">Use the search below to add USDA foods.</small>
+            </h5>
+            <div class="row g-2 align-items-center">
+              <div class="col-md-6">
+                <input type="text" id="foodSearchInput" class="form-control" placeholder="Search foods (e.g. egg white)" />
+              </div>
+              <div class="col-md-2">
+                <button type="button" id="foodSearchBtn" class="btn btn-outline-primary w-100">Search</button>
+              </div>
+            </div>
+          <div id="foodSearchResults" class="list-group mt-2 d-none"></div>
+        </div>
+
+          <div class="card border-secondary mt-3">
+            <div class="card-body">
+              <h6 class="card-title">Quick Add Custom Food</h6>
+              <p class="small text-muted mb-3">Provide nutrition per 100 g for fastest setup. The food is added to the shared food library for all clients.</p>
+              <div class="row g-2 mb-2">
+                <div class="col-md-4">
+                  <label class="form-label">Name</label>
+                  <input type="text" id="customFoodName" class="form-control" placeholder="e.g. Homemade Granola" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label">Calories</label>
+                  <input type="number" step="0.1" id="customFoodCalories" class="form-control" placeholder="kcal" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label">Protein (g)</label>
+                  <input type="number" step="0.1" id="customFoodProtein" class="form-control" placeholder="g" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label">Carbs (g)</label>
+                  <input type="number" step="0.1" id="customFoodCarbs" class="form-control" placeholder="g" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label">Fat (g)</label>
+                  <input type="number" step="0.1" id="customFoodFats" class="form-control" placeholder="g" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label">Serving Qty</label>
+                  <input type="number" step="0.01" id="customFoodQuantity" class="form-control" placeholder="e.g. 1" value="1" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label">Unit</label>
+                  <input type="text" id="customFoodUnit" class="form-control" placeholder="e.g. cup" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label">Grams</label>
+                  <input type="number" step="0.1" id="customFoodGrams" class="form-control" placeholder="grams" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label">Volume (ml)</label>
+                  <input type="number" step="0.1" id="customFoodVolume" class="form-control" placeholder="optional" />
+                </div>
+              </div>
+              <div class="text-end">
+                <button type="button" id="addCustomFoodBtn" class="btn btn-outline-secondary btn-sm">Create & Add Ingredient</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="ingredientList" class="mb-4"></div>
+
+          <button type="submit" class="btn btn-success">Save Meal</button>
+          {% if client %}
+            <a href="{{ url_for('trainer.client_detail', member_id=client.id) }}" class="btn btn-link ms-2">Cancel</a>
+          {% else %}
+            <a href="{{ url_for('trainer.dashboard_trainer') }}" class="btn btn-link ms-2">Cancel</a>
+          {% endif %}
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    const searchInput = document.getElementById("foodSearchInput");
+    const searchBtn = document.getElementById("foodSearchBtn");
+    const resultsBox = document.getElementById("foodSearchResults");
+    const ingredientList = document.getElementById("ingredientList");
+    const mealForm = document.getElementById("mealForm");
+    const customFoodName = document.getElementById("customFoodName");
+    const customFoodCalories = document.getElementById("customFoodCalories");
+    const customFoodProtein = document.getElementById("customFoodProtein");
+    const customFoodCarbs = document.getElementById("customFoodCarbs");
+    const customFoodFats = document.getElementById("customFoodFats");
+    const addCustomFoodBtn = document.getElementById("addCustomFoodBtn");
+    const customFoodQuantity = document.getElementById("customFoodQuantity");
+    const customFoodUnit = document.getElementById("customFoodUnit");
+    const customFoodGrams = document.getElementById("customFoodGrams");
+    const customFoodVolume = document.getElementById("customFoodVolume");
+
+    function clearSearchResults() {
+      resultsBox.classList.add("d-none");
+      resultsBox.innerHTML = "";
+    }
+
+    function createUnitOption(value, label, selectedUnit) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      if (selectedUnit && selectedUnit.toLowerCase() === value.toLowerCase()) {
+        option.selected = true;
+      }
+      return option;
+    }
+
+    async function populateUnits(selectEl, foodId, selectedUnit) {
+      selectEl.innerHTML = "";
+      selectEl.appendChild(createUnitOption("g", "g (grams)", selectedUnit || "g"));
+      try {
+        const res = await fetch(`/member/get-measures/${foodId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data && data.measures) {
+          data.measures.forEach((entry) => {
+            if (!entry.measure_name) return;
+            const label = entry.measure_name;
+            const value = entry.measure_name.toLowerCase();
+            if (value === "g") {
+              return;
+            }
+            selectEl.appendChild(createUnitOption(value, label, selectedUnit));
+          });
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    function refreshPositions() {
+      const rows = ingredientList.querySelectorAll(".ingredient-row");
+      rows.forEach((row, idx) => {
+        const posInput = row.querySelector("input[name='ingredient_position[]']");
+        if (posInput) {
+          posInput.value = idx;
+        }
+      });
+    }
+
+    function addIngredientRow(food, preset) {
+      const row = document.createElement("div");
+      row.className = "ingredient-row card card-body mb-3";
+
+      const foodId = food ? food.id : preset.food_id;
+      const foodName = food ? food.name : preset.name;
+      const quantity = preset ? (preset.quantity || preset.grams || 0) : 1;
+      const unit = preset ? (preset.unit || (preset.quantity ? preset.unit : "g")) : "g";
+      const notes = preset ? (preset.notes || "") : "";
+
+      row.innerHTML = `
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <strong class="ingredient-name">${foodName}</strong>
+          </div>
+          <button type="button" class="btn btn-sm btn-outline-danger">Remove</button>
+        </div>
+        <div class="row mt-2 g-2">
+          <div class="col-md-4">
+            <label class="form-label">Quantity</label>
+            <input type="number" step="0.1" name="ingredient_quantity[]" class="form-control" value="${quantity}" required />
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Unit</label>
+            <select name="ingredient_unit[]" class="form-select"></select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Notes <span class="text-muted">(optional)</span></label>
+            <input type="text" name="ingredient_notes[]" class="form-control" value="${notes}" />
+          </div>
+        </div>
+        <input type="hidden" name="ingredient_food_id[]" value="${foodId}" />
+        <input type="hidden" name="ingredient_position[]" value="0" />
+      `;
+
+      const removeBtn = row.querySelector("button.btn-outline-danger");
+      removeBtn.addEventListener("click", () => {
+        row.remove();
+        refreshPositions();
+      });
+
+      ingredientList.appendChild(row);
+      const unitSelect = row.querySelector("select[name='ingredient_unit[]']");
+      populateUnits(unitSelect, foodId, unit);
+      refreshPositions();
+    }
+
+    async function performSearch() {
+      const query = searchInput.value.trim();
+      if (!query) {
+        clearSearchResults();
+        return;
+      }
+
+      try {
+        const res = await fetch(`/member/search-foods?q=${encodeURIComponent(query)}&quantity=1&unit=g`);
+        if (!res.ok) {
+          clearSearchResults();
+          return;
+        }
+        const data = await res.json();
+        if (!data.results || !data.results.length) {
+          resultsBox.innerHTML = '<div class="list-group-item text-muted">No foods found.</div>';
+          resultsBox.classList.remove("d-none");
+          return;
+        }
+
+        resultsBox.innerHTML = "";
+        data.results.forEach((food) => {
+          const item = document.createElement("button");
+          item.type = "button";
+          item.className = "list-group-item list-group-item-action";
+          item.textContent = `${food.name} (${food.calories} cal per unit)`;
+          item.addEventListener("click", () => {
+            addIngredientRow(food);
+            clearSearchResults();
+            searchInput.value = "";
+          });
+          resultsBox.appendChild(item);
+        });
+        resultsBox.classList.remove("d-none");
+      } catch (err) {
+        console.error(err);
+        clearSearchResults();
+      }
+    }
+
+    searchBtn.addEventListener("click", performSearch);
+    searchInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        performSearch();
+      }
+    });
+    searchInput.addEventListener("input", () => {
+      const query = searchInput.value.trim();
+      if (query.length >= 2) {
+        performSearch();
+      } else {
+        clearSearchResults();
+      }
+    });
+
+    mealForm.addEventListener("submit", () => {
+      refreshPositions();
+    });
+
+    if (addCustomFoodBtn) {
+      addCustomFoodBtn.addEventListener("click", async () => {
+        const name = customFoodName.value.trim();
+        if (!name) {
+          alert("Please provide a name for the custom food.");
+          return;
+        }
+
+        try {
+          const res = await fetch("{{ url_for('trainer.create_custom_food') }}", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              name,
+              calories: customFoodCalories.value,
+              protein: customFoodProtein.value,
+              carbs: customFoodCarbs.value,
+              fats: customFoodFats.value,
+              quantity: customFoodQuantity.value,
+              unit: customFoodUnit.value,
+              grams: customFoodGrams.value,
+              volume_ml: customFoodVolume.value,
+            }),
+          });
+          const data = await res.json();
+          if (data.status !== "success") {
+            alert(data.message || "Unable to create custom food.");
+            return;
+          }
+
+          addIngredientRow(
+            { id: data.food.id, name: data.food.name },
+            {
+              quantity: Number(customFoodQuantity.value || 1),
+              unit: customFoodUnit.value || (customFoodGrams.value ? "g" : "g"),
+              grams: customFoodGrams.value ? Number(customFoodGrams.value) : undefined,
+              volume_ml: customFoodVolume.value ? Number(customFoodVolume.value) : undefined,
+            }
+          );
+
+          customFoodName.value = "";
+          customFoodCalories.value = "";
+          customFoodProtein.value = "";
+          customFoodCarbs.value = "";
+          customFoodFats.value = "";
+          customFoodQuantity.value = "1";
+          customFoodUnit.value = "";
+          customFoodGrams.value = "";
+          customFoodVolume.value = "";
+          customFoodQuantity.value = "1";
+          customFoodUnit.value = "";
+          customFoodGrams.value = "";
+          customFoodVolume.value = "";
+          alert("Custom food created and added to the meal.");
+        } catch (err) {
+          console.error(err);
+          alert("Error creating custom food.");
+        }
+      });
+    }
+
+    {% if meal_data and meal_data.ingredients %}
+      const presetIngredients = {{ meal_data.ingredients | tojson }};
+      presetIngredients.forEach((ingredient) => addIngredientRow(null, ingredient));
+    {% endif %}
+  </script>
+</body>
+</html>

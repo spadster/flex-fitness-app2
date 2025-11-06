@@ -1,6 +1,25 @@
 from flask import Blueprint, render_template, session, flash, redirect, request, url_for, jsonify
 from app import db
-from app.models import User, Progress, Food, UserFoodLog, FoodMeasure
+from app.models import (
+    User,
+    Progress,
+    Food,
+    UserFoodLog,
+    FoodMeasure,
+    WorkoutSession,
+    WorkoutSet,
+    TrainerMeal,
+    MemberMeal,
+    MemberMealIngredient,
+)
+from app.services.nutrition import (
+    scale_food_nutrients,
+    calculate_meal_macros,
+    group_meals_by_slot,
+    serialize_meal,
+    MEAL_SLOT_LABELS,
+)
+from sqlalchemy import or_, and_
 from datetime import datetime, date
 import calendar as _calendar
 
@@ -98,7 +117,8 @@ def _calculate_calorie_targets(user, weight_lbs=None):
 
     goal = maintenance - (weekly_change * 500)
 
-    return max(0, maintenance), max(0, goal)
+    # Round to nearest tenth for display/storage consistency
+    return round(max(0, maintenance), 1), round(max(0, goal), 1)
 
 
 def _update_user_calorie_targets(user, weight_lbs=None):
@@ -188,6 +208,44 @@ def dashboard():
     # -----------------------------
     user_food_logs = UserFoodLog.query.filter_by(user_id=user.id, log_date=today).all()
     totals = _calculate_daily_totals(user.id, today)
+    macro_targets = {
+        "calories": user.custom_calorie_target or user.calorie_goal,
+        "protein": user.custom_protein_target_g,
+        "carbs": user.custom_carb_target_g,
+        "fats": user.custom_fat_target_g,
+    }
+    calorie_goal_value = macro_targets["calories"] or user.calorie_goal or 2000
+
+    if user.trainer_id:
+        trainer_meals = (
+            TrainerMeal.query
+            .filter(
+                or_(
+                    TrainerMeal.member_id == user.id,
+                    TrainerMeal.member_id.is_(None),
+                    and_(
+                        TrainerMeal.trainer_id == user.trainer_id
+                    )
+                )
+            )
+            .order_by(TrainerMeal.meal_slot.asc(), TrainerMeal.name.asc())
+            .all()
+        )
+    else:
+        trainer_meals = (
+            TrainerMeal.query
+            .filter(TrainerMeal.member_id == user.id)
+            .order_by(TrainerMeal.meal_slot.asc(), TrainerMeal.name.asc())
+            .all()
+        )
+    meal_plan = group_meals_by_slot(trainer_meals) if trainer_meals else {slot: [] for slot in MEAL_SLOT_LABELS}
+    member_meals = (
+        MemberMeal.query
+        .filter_by(user_id=user.id)
+        .order_by(MemberMeal.meal_slot.asc(), MemberMeal.name.asc())
+        .all()
+    )
+    member_meal_plan = group_meals_by_slot(member_meals) if member_meals else {slot: [] for slot in MEAL_SLOT_LABELS}
 
     # ----------
     # Calendar support (server-rendered, no JS required)
@@ -204,6 +262,14 @@ def dashboard():
     calendar_weeks = None
     selected_weight = None
     selected_food_calories = None
+    selected_workouts = []
+
+    workout_sessions = (
+        WorkoutSession.query
+        .filter_by(user_id=user.id)
+        .order_by(WorkoutSession.started_at.desc())
+        .all()
+    )
 
     if view == 'calendar':
         # default to current month if not provided
@@ -216,6 +282,27 @@ def dashboard():
             selected_date = datetime.strptime(sel_day, "%Y-%m-%d").date() if sel_day else today
         except Exception:
             selected_date = today
+
+        workout_map = {}
+        for sess in workout_sessions:
+            dt = getattr(sess, 'completed_at', None) or getattr(sess, 'started_at', None)
+            if not dt:
+                continue
+            try:
+                day = dt.date() if isinstance(dt, datetime) else dt
+            except Exception:
+                continue
+            workout_map.setdefault(day, []).append(sess)
+
+        def _format_time(dt_obj):
+            if not dt_obj:
+                return ''
+            try:
+                if isinstance(dt_obj, datetime):
+                    return dt_obj.strftime('%H:%M')
+            except Exception:
+                return ''
+            return ''
 
         def _build_calendar_weeks(year, month, user_obj):
             weeks = []
@@ -285,13 +372,13 @@ def dashboard():
                             for fl in fls:
                                 if getattr(fl, 'food', None):
                                     grams_logged = fl.quantity_in_grams() if hasattr(fl, 'quantity_in_grams') else getattr(fl, 'quantity', 0)
-                                    scaled = _scale_food_nutrients(fl.food, grams_logged)
+                                    scaled = scale_food_nutrients(fl.food, grams_logged)
                                     total_cals += scaled["calories"]
                                     total_protein += scaled["protein"]
                                     total_carbs += scaled["carbs"]
                                     total_fats += scaled["fats"]
 
-                            food_calories = int(total_cals) if total_cals else None
+                            food_calories = round(total_cals, 1) if total_cals else None
                             food_protein = round(total_protein, 1) if total_protein else None
                             food_carbs = round(total_carbs, 1) if total_carbs else None
                             food_fats = round(total_fats, 1) if total_fats else None
@@ -304,6 +391,15 @@ def dashboard():
                         food_calories = None
                         items = []
 
+                    workouts_for_day = []
+                    for sess in workout_map.get(d, []):
+                        workouts_for_day.append({
+                            'id': sess.id,
+                            'summary': sess.summary,
+                            'time': _format_time(getattr(sess, 'completed_at', None) or getattr(sess, 'started_at', None)),
+                            'template': sess.template.name if getattr(sess, 'template', None) else None,
+                        })
+
                     data = {
                         'weight': weight_val,
                         'food': {
@@ -312,6 +408,7 @@ def dashboard():
                             'carbs': food_carbs if 'food_carbs' in locals() else None,
                             'fats': food_fats if 'food_fats' in locals() else None,
                         } if (food_calories or (('food_protein' in locals() and food_protein) or ('food_carbs' in locals() and food_carbs) or ('food_fats' in locals() and food_fats))) else None,
+                        'workouts': workouts_for_day if workouts_for_day else None,
                     }
 
                     week_list.append({'iso': iso, 'day': d.day, 'in_month': True, 'data': data})
@@ -371,12 +468,12 @@ def dashboard():
                         continue
                     if getattr(fl, 'food', None):
                         grams_logged = fl.quantity_in_grams() if hasattr(fl, 'quantity_in_grams') else getattr(fl, 'quantity', 0)
-                        scaled = _scale_food_nutrients(fl.food, grams_logged)
+                        scaled = scale_food_nutrients(fl.food, grams_logged)
                         tot += scaled["calories"]
                         total_protein += scaled["protein"]
                         total_carbs += scaled["carbs"]
                         total_fats += scaled["fats"]
-                selected_food_calories = int(tot) if tot else None
+                selected_food_calories = round(tot, 1) if tot else None
                 selected_food_protein = round(total_protein, 1) if total_protein else None
                 selected_food_carbs = round(total_carbs, 1) if total_carbs else None
                 selected_food_fats = round(total_fats, 1) if total_fats else None
@@ -387,6 +484,24 @@ def dashboard():
                 selected_food_protein = None
                 selected_food_carbs = None
                 selected_food_fats = None
+
+            try:
+                selected_workouts = []
+                for sess in workout_map.get(selected_date, []):
+                    workout_sets = (
+                        WorkoutSet.query
+                        .filter_by(session_id=sess.id)
+                        .order_by(WorkoutSet.exercise_name.asc(), WorkoutSet.set_number.asc())
+                        .all()
+                    )
+                    selected_workouts.append({
+                        'session': sess,
+                        'time': _format_time(getattr(sess, 'completed_at', None) or getattr(sess, 'started_at', None)),
+                        'summary': sess.summary,
+                        'sets': workout_sets,
+                    })
+            except Exception:
+                selected_workouts = []
         except Exception:
             selected_weight = None
             selected_food_calories = None
@@ -439,6 +554,7 @@ def dashboard():
         selected_food_carbs=selected_food_carbs if 'selected_food_carbs' in locals() else None,
         selected_food_fats=selected_food_fats if 'selected_food_fats' in locals() else None,
         selected_food_items=selected_food_items if 'selected_food_items' in locals() else [],
+        selected_workouts=selected_workouts,
         activity_levels=ACTIVITY_LEVELS,
         latest_weight_lbs=latest_weight_lbs,
         height_feet=height_feet,
@@ -446,6 +562,11 @@ def dashboard():
         goal_weight_lbs=goal_weight_lbs,
         profile_bmr=profile_bmr,
         recent_weights=recent_weights,
+        macro_targets=macro_targets,
+        calorie_goal_value=calorie_goal_value,
+        meal_plan=meal_plan,
+        meal_slot_labels=MEAL_SLOT_LABELS,
+        member_meal_plan=member_meal_plan,
         today=today
     )
 
@@ -459,55 +580,12 @@ UNIT_TO_GRAMS = {
     "tbsp": 14.3,
     "cup": 240
 }
-
-def _serving_grams(food: Food) -> float:
-    """Return the gram weight that nutrient data is based on for a food."""
-    for value in (getattr(food, "serving_size", None), getattr(food, "grams_per_unit", None)):
-        if value and value > 0:
-            return float(value)
-    return 100.0
-
-
-def _scale_food_nutrients(food: Food, quantity_in_grams: float) -> dict:
-    """Scale a food's macro profile to a quantity in grams, inferring calories when missing."""
-    if not food:
-        return {"calories": 0.0, "protein": 0.0, "carbs": 0.0, "fats": 0.0}
-    grams = float(quantity_in_grams or 0.0)
-    serving_grams = _serving_grams(food)
-    factor = grams/serving_grams if serving_grams else 0.0
-
-    base_protein = float(food.protein_g or 0.0)
-    base_carbs = float(food.carbs_g or 0.0)
-    base_fats = float(food.fats_g or 0.0)
-    base_calories = float(food.calories or 0.0)
-
-
-    macro_calories = (base_protein * 4) + (base_carbs * 4) + (base_fats * 9)
-    adjusted_calories = base_calories
-
-    if macro_calories:
-        if not adjusted_calories:
-            adjusted_calories = macro_calories
-        else:
-            ratio = adjusted_calories / macro_calories if macro_calories else 1
-            if ratio > 2 or ratio < 0.5:    
-                adjusted_calories = macro_calories
-
-
-    return {
-        "calories": adjusted_calories * factor,
-        "protein": base_protein * factor,
-        "carbs": base_carbs * factor,
-        "fats": base_fats * factor
-    }
-
-
 def _calculate_daily_totals(user_id: int, target_date: date) -> dict:
     logs = UserFoodLog.query.filter_by(user_id=user_id, log_date=target_date).all()
     totals = {"calories": 0.0, "protein": 0.0, "carbs": 0.0, "fat": 0.0}
 
     for log in logs:
-        scaled = _scale_food_nutrients(log.food, log.quantity_in_grams())
+        scaled = scale_food_nutrients(log.food, log.quantity_in_grams())
         totals["calories"] += scaled["calories"]
         totals["protein"] += scaled["protein"]
         totals["carbs"] += scaled["carbs"]
@@ -529,7 +607,7 @@ def get_totals():
 
 
 def scaled_macros(food: Food, quantity_in_grams: float):
-    scaled = _scale_food_nutrients(food, quantity_in_grams)
+    scaled = scale_food_nutrients(food, quantity_in_grams)
 
     return {
         "calories": round(scaled["calories"], 1),
@@ -601,6 +679,235 @@ def search_foods():
 
     return jsonify({"results": results})
 
+
+@member_bp.route("/add-meal/<int:meal_id>", methods=["POST"])
+def add_meal_to_log(meal_id: int):
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"status": "error", "message": "Please log in first."}), 403
+
+    today = datetime.utcnow().date()
+    meal = TrainerMeal.query.get(meal_id)
+
+    if not meal:
+        return jsonify({"status": "error", "message": "Meal not found or unauthorized."}), 404
+
+    member = User.query.get(user_id)
+    if meal.member_id and meal.member_id != user_id:
+        return jsonify({"status": "error", "message": "Meal not available for this member."}), 403
+    if meal.member_id is None:
+        if not member or not member.trainer_id:
+            return jsonify({"status": "error", "message": "A trainer is required to use this meal."}), 403
+
+    logs_payload = []
+
+    for ingredient in meal.ingredients:
+        grams = float(ingredient.quantity_grams or 0.0)
+        if grams <= 0:
+            continue
+
+        log = UserFoodLog(
+            user_id=user_id,
+            food_id=ingredient.food_id,
+            quantity=grams,
+            unit="g",
+            log_date=today
+        )
+        db.session.add(log)
+        db.session.flush()
+
+        scaled = scale_food_nutrients(log.food, grams)
+        logs_payload.append({
+            "id": log.id,
+            "food_name": log.food.name if log.food else "Meal Ingredient",
+            "quantity": round(grams, 2),
+            "unit": "g",
+            "calories": round(scaled["calories"], 1),
+            "protein": round(scaled["protein"], 1),
+            "carbs": round(scaled["carbs"], 1),
+            "fats": round(scaled["fats"], 1)
+        })
+
+    if not logs_payload:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": "Meal has no ingredients to log."}), 400
+
+    db.session.commit()
+
+    totals = _calculate_daily_totals(user_id, today)
+    totals["fats"] = totals["fat"]
+
+    return jsonify({
+        "status": "success",
+        "message": f"Added {meal.name} to your log.",
+        "logs": logs_payload,
+        "totals": totals
+    })
+
+
+@member_bp.route("/meals", methods=["POST"])
+def create_member_meal():
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"status": "error", "message": "Please log in first."}), 403
+
+    user = User.query.get(user_id)
+    data = request.get_json(silent=True) or {}
+
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"status": "error", "message": "Meal name is required."}), 400
+
+    slot = (data.get("slot") or "meal1").strip().lower()
+    if slot not in MEAL_SLOT_LABELS:
+        slot = "meal1"
+
+    description = (data.get("description") or "").strip()
+    ingredients_payload = data.get("ingredients") or []
+
+    if not ingredients_payload:
+        return jsonify({"status": "error", "message": "Add at least one ingredient."}), 400
+
+    meal = MemberMeal(
+        user_id=user.id,
+        name=name,
+        description=description or None,
+        meal_slot=slot
+    )
+
+    try:
+        for idx, item in enumerate(ingredients_payload):
+            food_id = item.get("food_id")
+            quantity_raw = item.get("quantity")
+            unit = (item.get("unit") or "g").strip().lower()
+
+            if not food_id or quantity_raw in (None, ""):
+                continue
+
+            try:
+                quantity = float(quantity_raw)
+            except (TypeError, ValueError):
+                return jsonify({"status": "error", "message": "Invalid ingredient quantity."}), 400
+
+            if quantity <= 0:
+                return jsonify({"status": "error", "message": "Ingredient quantity must be greater than zero."}), 400
+
+            grams_override = item.get("grams")
+            volume_override = item.get("volume_ml")
+            try:
+                grams_total, volume_ml = convert_to_grams(
+                    food_id,
+                    quantity,
+                    unit,
+                    grams_override=_safe_float(grams_override),
+                    volume_override=_safe_float(volume_override)
+                )
+            except Exception as exc:
+                return jsonify({"status": "error", "message": f"Unable to convert units: {exc}"}), 400
+
+            ingredient = MemberMealIngredient(
+                food_id=food_id,
+                quantity_value=quantity,
+                quantity_unit=unit,
+                quantity_grams=grams_total,
+                volume_ml=volume_ml,
+                position=idx,
+                notes=(item.get("notes") or "").strip() or None
+            )
+            meal.ingredients.append(ingredient)
+
+        if not meal.ingredients:
+            return jsonify({"status": "error", "message": "Add at least one valid ingredient."}), 400
+
+        db.session.add(meal)
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": f"Failed to create meal: {exc}"}), 500
+
+    return jsonify({
+        "status": "success",
+        "meal": serialize_meal(meal)
+    })
+
+
+def _safe_float(value):
+    if value in (None, "", "undefined"):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+@member_bp.route("/meals/<int:meal_id>", methods=["DELETE"])
+def delete_member_meal(meal_id: int):
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"status": "error", "message": "Please log in first."}), 403
+
+    meal = MemberMeal.query.filter_by(id=meal_id, user_id=user_id).first()
+    if not meal:
+        return jsonify({"status": "error", "message": "Meal not found."}), 404
+
+    db.session.delete(meal)
+    db.session.commit()
+    return jsonify({"status": "success"})
+
+
+@member_bp.route("/add-member-meal/<int:meal_id>", methods=["POST"])
+def add_member_meal_to_log(meal_id: int):
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"status": "error", "message": "Please log in first."}), 403
+
+    today = datetime.utcnow().date()
+    meal = MemberMeal.query.filter_by(id=meal_id, user_id=user_id).first()
+    if not meal:
+        return jsonify({"status": "error", "message": "Meal not found."}), 404
+
+    logs_payload = []
+    for ingredient in meal.ingredients:
+        grams = float(ingredient.quantity_grams or 0.0)
+        if grams <= 0:
+            continue
+
+        log = UserFoodLog(
+            user_id=user_id,
+            food_id=ingredient.food_id,
+            quantity=grams,
+            unit="g",
+            log_date=today
+        )
+        db.session.add(log)
+        db.session.flush()
+
+        scaled = scale_food_nutrients(log.food, grams)
+        logs_payload.append({
+            "id": log.id,
+            "food_name": log.food.name if log.food else "Meal Ingredient",
+            "quantity": round(grams, 2),
+            "unit": "g",
+            "calories": round(scaled["calories"], 1),
+            "protein": round(scaled["protein"], 1),
+            "carbs": round(scaled["carbs"], 1),
+            "fats": round(scaled["fats"], 1)
+        })
+
+    if not logs_payload:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": "Meal has no ingredients to log."}), 400
+
+    db.session.commit()
+    totals = _calculate_daily_totals(user_id, today)
+    totals["fats"] = totals["fat"]
+
+    return jsonify({
+        "status": "success",
+        "message": f"Added {meal.name} to your log.",
+        "logs": logs_payload,
+        "totals": totals
+    })
 @member_bp.route("/log-food", methods=["POST"])
 def log_food():
     user_id = session.get("user_id")
@@ -686,7 +993,7 @@ def log_food():
     db.session.add(log)
     db.session.commit()
 
-    scaled = _scale_food_nutrients(food, grams)
+    scaled = scale_food_nutrients(food, grams)
     totals = _calculate_daily_totals(user_id, today)
     totals["fats"] = totals["fat"]
 
@@ -900,18 +1207,31 @@ def exercise_plan():
     if not user_id:
         return redirect(url_for("auth.login_member"))
 
-    user = User.query.get(user_id)
-    # Dummy plan for now — replace with real query if needed
-    plan = []
-    return render_template("exercise-plan.html", user=user, plan=plan)
+    return redirect(url_for('template.list_templates'))
 
 
 @member_bp.route("/get-measures/<int:food_id>")
 def get_measures(food_id):
     measures = FoodMeasure.query.filter_by(food_id=food_id).all()
-    return jsonify({
-        "measures": [{"measure_name": m.measure_name, "grams": m.grams} for m in measures]
-    })
+    payload = []
+    seen = set()
+
+    for measure in measures:
+        if not measure or not measure.grams:
+            continue
+        name = (measure.measure_name or "").strip().lower()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        payload.append({"measure_name": measure.measure_name, "grams": measure.grams})
+
+    # Always ensure grams and ounces are available as fallbacks
+    if "g" not in seen:
+        payload.append({"measure_name": "g", "grams": 1})
+    if "oz" not in seen:
+        payload.append({"measure_name": "oz", "grams": UNIT_TO_GRAMS.get("oz", 28.35)})
+
+    return jsonify({"measures": payload})
 
 # -----------------------------
 # Delete Food Log

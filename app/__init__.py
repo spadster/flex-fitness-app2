@@ -33,11 +33,13 @@ def create_app():
     from app.routes.main import main_bp
     from app.routes.trainer import trainer_bp
     from app.routes.member import member_bp
+    from app.routes.template import template_bp
 
     # Register blueprints
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
     app.register_blueprint(trainer_bp)
     app.register_blueprint(member_bp)
+    app.register_blueprint(template_bp)
 
     return app

@@ -44,6 +44,38 @@
       .progress-ring-circle {
         transition: stroke-dashoffset 0.35s;
       }
+      body {
+        padding-bottom: 80px;
+      }
+
+      .bottom-nav {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: #ffffff;
+        border-top: 1px solid rgba(0, 0, 0, 0.1);
+        z-index: 1050;
+      }
+
+      .bottom-nav .nav-link {
+        color: #6c757d;
+        font-size: 0.85rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.5rem 0;
+      }
+
+      .bottom-nav .nav-link .bi {
+        font-size: 1.25rem;
+      }
+
+      .bottom-nav .nav-link.active {
+        color: #0d6efd;
+        font-weight: 600;
+      }
     </style>
   </head>
   <body class="bg-light">
@@ -60,58 +92,33 @@
       </div>
     </nav>
 
-    <div class="container mt-4">
+    <div class="container mt-4 mb-5">
+      {% set active_tab = 'dashboard' %}
+      {% if view == 'profile' %}
+        {% set active_tab = 'profile' %}
+      {% elif view == 'calendar' %}
+        {% set active_tab = 'calendar' %}
+      {% endif %}
+
       <h1 class="mb-4">Welcome back, {{ user.first_name }}!</h1>
 
       <div class="row">
-        <!-- Sidebar -->
-        <div class="col-md-3 mb-3">
-          <div class="list-group">
-            <a
-              href="{{ url_for('member.dashboard') }}"
-              class="list-group-item list-group-item-action {% if not view or view not in ['calendar', 'profile'] %}active{% endif %}"
-              >Dashboard</a
-            >
-            <a
-              href="{{ url_for('member.dashboard') }}?view=profile"
-              class="list-group-item list-group-item-action {% if view == 'profile' %}active{% endif %}"
-              >Profile &amp; Goals</a
-            >
-            <a
-              href="{{ url_for('member.view_progress') }}"
-              class="list-group-item list-group-item-action"
-              >View Progress</a
-            >
-            <a
-              href="{{ url_for('member.exercise_plan') }}"
-              class="list-group-item list-group-item-action"
-              >Exercise Plan</a
-            >
-            <a
-              href="{{ url_for('member.dashboard') }}?view=calendar"
-              class="list-group-item list-group-item-action {% if view == 'calendar' %}active{% endif %}"
-              >Calendar</a
-            >
-          </div>
-        </div>
-
-        <!-- Main content -->
-        <div class="col-md-9">
+        <div class="col-12">
           {% if view == 'profile' %}
           <div class="card mb-4 shadow-sm">
             <div class="card-body">
               <h4 class="card-title mb-3">Calorie Targets</h4>
               <div class="row text-center">
                 <div class="col-md-4 mb-3">
-                  <div class="fw-bold fs-4">{{ user.maintenance_calories | round(0) if user.maintenance_calories is not none else '—' }}</div>
+                  <div class="fw-bold fs-4">{{ user.maintenance_calories | round(1) if user.maintenance_calories is not none else '—' }}</div>
                   <div class="text-muted">Maintenance Calories</div>
                 </div>
                 <div class="col-md-4 mb-3">
-                  <div class="fw-bold fs-4">{{ user.calorie_goal | round(0) if user.calorie_goal is not none else '—' }}</div>
+                  <div class="fw-bold fs-4">{{ calorie_goal_value | round(1) if calorie_goal_value is not none else '—' }}</div>
                   <div class="text-muted">Daily Calorie Goal</div>
                 </div>
                 <div class="col-md-4 mb-3">
-                  <div class="fw-bold fs-4">{{ profile_bmr | round(0) if profile_bmr is not none else '—' }}</div>
+                  <div class="fw-bold fs-4">{{ profile_bmr | round(1) if profile_bmr is not none else '—' }}</div>
                   <div class="text-muted">BMR (Mifflin St-Jeor)</div>
                 </div>
               </div>
@@ -282,8 +289,11 @@
                                 </div>
                               </div>
 
-                              <div class="small" style="line-height:1.1;">
-                                <div><strong>Weight:</strong> {{ day.data.weight if day.data and day.data.weight is not none else '—' }}</div>
+                                <div class="small" style="line-height:1.1;">
+                                <div><strong>Weight:</strong> {{ (day.data.weight | round(1)) if day.data and day.data.weight is not none else '—' }}</div>
+                                {% if day.data and day.data.workouts %}
+                                  <div><strong>Workouts:</strong> {{ day.data.workouts | length }}</div>
+                                {% endif %}
                               </div>
 
                             </div>
@@ -301,94 +311,285 @@
               <div class="text-center mt-3">
                 <div class="small text-muted">Selected: {{ (selected_date.strftime('%A, %B %d, %Y') if selected_date else '') }}</div>
                 <div class="mt-2 border rounded p-3 bg-light text-start">
-                  <div><strong>Weight:</strong> {{ selected_weight if selected_weight is not none else 'No entry' }}</div>
+                  <div><strong>Weight:</strong> {{ (selected_weight | round(1)) if selected_weight is not none else 'No entry' }}</div>
                   <div><strong>Food:</strong>
                     <div>Calories: {% if selected_food_calories is not none %}{{ selected_food_calories }} kcal{% else %}No entry{% endif %}</div>
                     <div>Protein: {% if selected_food_protein is defined and selected_food_protein is not none %}{{ selected_food_protein }} g{% else %}—{% endif %}</div>
                     <div>Carbs: {% if selected_food_carbs is defined and selected_food_carbs is not none %}{{ selected_food_carbs }} g{% else %}—{% endif %}</div>
                     <div>Fats: {% if selected_food_fats is defined and selected_food_fats is not none %}{{ selected_food_fats }} g{% else %}—{% endif %}</div>
                   </div>
+                  <div class="mt-2"><strong>Workouts:</strong>
+                    {% if selected_workouts %}
+                      <ul class="list-unstyled small mb-0 mt-2">
+                        {% for workout in selected_workouts %}
+                          <li class="mb-1">
+                            <strong>{{ workout.time or '—' }}</strong>
+                            {% if workout.session and workout.session.template %}
+                              — {{ workout.session.template.name }}
+                            {% endif %}
+                            {% if workout.summary %}
+                              : {{ workout.summary }}
+                            {% endif %}
+                            <a class="ms-1" href="{{ url_for('template.view_session', session_id=workout.session.id) }}">View</a>
+                          </li>
+                        {% endfor %}
+                      </ul>
+                    {% else %}
+                      <span class="small text-muted">No workouts logged</span>
+                    {% endif %}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
           {% else %}
-          <!-- Daily Calorie Goal with Progress Ring -->
-          <div class="card mb-4 shadow-sm">
-            <div class="card-body text-center">
-              <h5 class="card-title mb-4">Daily Calorie Goal</h5>
-              <div
-                class="d-flex justify-content-center align-items-center mb-3"
-              >
-                <svg class="progress-ring" width="200" height="200">
-                  <circle
-                    class="progress-ring-circle"
-                    stroke="#e0e0e0"
-                    stroke-width="15"
-                    fill="transparent"
-                    r="85"
-                    cx="100"
-                    cy="100"
-                  />
-                  <circle
-                    class="progress-ring-circle"
-                    stroke="#ff6b6b"
-                    stroke-width="15"
-                    fill="transparent"
-                    r="85"
-                    cx="100"
-                    cy="100"
-                    stroke-dasharray="534.07 534.07"
-                    stroke-dashoffset="{{ 534.07 - (534.07 * (totals.calories / (user.calorie_goal or 2000))) if user.calorie_goal else 534.07 - (534.07 * (totals.calories / 2000)) }}"
-                    stroke-linecap="round"
-                  />
-                  <text
-                    x="100"
-                    y="95"
-                    text-anchor="middle"
-                    font-size="32"
-                    font-weight="bold"
-                    fill="#333"
-                  >
-                    {{ totals.calories | round(0) | int }}
-                  </text>
-                  <text
-                    x="100"
-                    y="115"
-                    text-anchor="middle"
-                    font-size="14"
-                    fill="#666"
-                  >
-                    / {{ user.calorie_goal or 2000 }} cal
-                  </text>
-                </svg>
-              </div>
-              <div class="progress mb-2" style="height: 25px">
-                <div
-                  class="progress-bar bg-danger"
-                  role="progressbar"
-                  style="width: {{ (totals.calories / (user.calorie_goal or 2000) * 100) | round(1) }}%"
-                  aria-valuenow="{{ totals.calories }}"
-                  aria-valuemin="0"
-                  aria-valuemax="{{ user.calorie_goal or 2000 }}"
-                >
-                  {{ (totals.calories / (user.calorie_goal or 2000) * 100) |
-                  round(1) }}%
+          <!-- Daily Calorie Goal & Custom Meals -->
+          <div class="row mb-4 g-3">
+            <div class="col-lg-6">
+              <div class="card h-100 shadow-sm">
+                <div class="card-body text-center">
+                  {% set goal_value = calorie_goal_value or 2000 %}
+                  <h5 class="card-title mb-4">Daily Calorie Goal</h5>
+                  <div class="d-flex justify-content-center align-items-center mb-3">
+                    <svg class="progress-ring" width="200" height="200">
+                      <circle
+                        class="progress-ring-circle"
+                        stroke="#e0e0e0"
+                        stroke-width="15"
+                        fill="transparent"
+                        r="85"
+                        cx="100"
+                        cy="100"
+                      />
+                      <circle
+                        class="progress-ring-circle"
+                        stroke="#ff6b6b"
+                        stroke-width="15"
+                        fill="transparent"
+                        r="85"
+                        cx="100"
+                        cy="100"
+                        stroke-dasharray="534.07 534.07"
+                        stroke-dashoffset="{{ 534.07 - (534.07 * (totals.calories / goal_value)) if goal_value else 534.07 }}"
+                        stroke-linecap="round"
+                      />
+                      <text
+                        x="100"
+                        y="95"
+                        text-anchor="middle"
+                        font-size="32"
+                        font-weight="bold"
+                        fill="#333"
+                      >
+                        {{ totals.calories | round(1) }}
+                      </text>
+                      <text
+                        x="100"
+                        y="115"
+                        text-anchor="middle"
+                        font-size="14"
+                        fill="#666"
+                      >
+                        / {{ goal_value | round(1) }} cal
+                      </text>
+                    </svg>
+                  </div>
+                  <div class="progress mb-2" style="height: 25px">
+                    <div
+                      class="progress-bar bg-danger"
+                      id="calorieProgressBar"
+                      role="progressbar"
+                      style="width: {{ (totals.calories / goal_value * 100) | round(1) if goal_value else 0 }}%"
+                      aria-valuenow="{{ totals.calories }}"
+                      aria-valuemin="0"
+                      aria-valuemax="{{ goal_value }}"
+                    >
+                      {{ (totals.calories / goal_value * 100) | round(1) if goal_value else 0 }}%
+                    </div>
+                  </div>
+                  {% set remaining = goal_value - totals.calories %}
+                  {% set remaining_class = 'text-success' if remaining > 0 else 'text-warning' %}
+                  <p class="text-muted mb-0">
+                    <span id="calorieRemainingText" class="{{ remaining_class }}">
+                      {% if remaining > 0 %}
+                        {{ remaining | round(1) }} calories remaining
+                      {% else %}
+                        {{ (remaining * -1) | round(1) }} calories over goal
+                      {% endif %}
+                    </span>
+                  </p>
                 </div>
               </div>
-              <p class="text-muted mb-0">
-                {% set remaining = (user.calorie_goal or 2000) - totals.calories
-                %} {% if remaining > 0 %}
-                <span class="text-success"
-                  >{{ remaining | round(0) | int }} calories remaining</span
-                >
-                {% else %}
-                <span class="text-warning"
-                  >{{ (remaining * -1) | round(0) | int }} calories over
-                  goal</span
-                >
-                {% endif %}
-              </p>
+            </div>
+            <div class="col-lg-6">
+              <div class="card h-100 shadow-sm">
+                <div class="card-body">
+                  <ul class="nav nav-tabs small mb-3" id="mealSourceTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                      <button class="nav-link active" id="trainer-meals-tab" data-bs-toggle="tab" data-bs-target="#trainerMealsPane" type="button" role="tab">Trainer Meals</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                      <button class="nav-link" id="member-meals-tab" data-bs-toggle="tab" data-bs-target="#memberMealsPane" type="button" role="tab">My Meals</button>
+                    </li>
+                  </ul>
+                  <div class="tab-content" id="mealSourceTabsContent">
+                    <div class="tab-pane fade show active" id="trainerMealsPane" role="tabpanel" aria-labelledby="trainer-meals-tab">
+                      {% if not user.trainer_id %}
+                        <p class="text-muted small mb-0">Link a trainer code to unlock the shared meal library.</p>
+                      {% else %}
+                        <ul class="nav nav-pills small" id="trainerMealTabs" role="tablist">
+                          {% for slot, label in meal_slot_labels.items() %}
+                            <li class="nav-item" role="presentation">
+                              <button class="nav-link {% if loop.first %}active{% endif %}" id="trainer-tab-{{ slot }}" data-bs-toggle="pill" data-bs-target="#trainer-panel-{{ slot }}" type="button" role="tab">{{ label }}</button>
+                            </li>
+                          {% endfor %}
+                        </ul>
+                        <div class="tab-content mt-3" id="trainerMealContent">
+                          {% for slot, label in meal_slot_labels.items() %}
+                            <div class="tab-pane fade {% if loop.first %}show active{% endif %}" id="trainer-panel-{{ slot }}" role="tabpanel" aria-labelledby="trainer-tab-{{ slot }}">
+                              {% set slot_meals = meal_plan.get(slot) %}
+                              {% if slot_meals %}
+                                {% for meal in slot_meals %}
+                                  <div class="border rounded-3 p-3 mb-3">
+                                    <div class="d-flex justify-content-between align-items-start">
+                                      <div>
+                                        <h6 class="mb-1">{{ meal.name }}</h6>
+                                        {% if meal.description %}
+                                          <p class="mb-2 text-muted small">{{ meal.description }}</p>
+                                        {% endif %}
+                                        <p class="mb-2 small text-secondary">
+                                          {{ meal.macros.calories }} cal · {{ meal.macros.protein }}g protein · {{ meal.macros.carbs }}g carbs · {{ meal.macros.fats }}g fat
+                                        </p>
+                                      </div>
+                                      <button type="button" class="btn btn-sm btn-outline-primary add-meal-btn" data-meal-id="{{ meal.id }}">Add Meal</button>
+                                    </div>
+                                    <ul class="mb-0 small mt-2">
+                                      {% for ingredient in meal.ingredients %}
+                                        <li>
+                                          <strong>{{ ingredient.name }}</strong>
+                                          — {{ ingredient.grams }} g{% if ingredient.ounces %} / {{ ingredient.ounces }} oz{% endif %}
+                                          {% if ingredient.volume_ml %}
+                                            ({{ ingredient.volume_ml }} ml{% if ingredient.fluid_oz %} / {{ ingredient.fluid_oz }} fl oz{% endif %})
+                                          {% endif %}
+                                        </li>
+                                      {% endfor %}
+                                    </ul>
+                                  </div>
+                                {% endfor %}
+                              {% else %}
+                            <p class="text-muted small mb-0 member-meals-empty">No meals in {{ label.lower() }} yet.</p>
+                          {% endif %}
+                        </div>
+                      {% endfor %}
+                    </div>
+                      {% endif %}
+                    </div>
+                    <div class="tab-pane fade" id="memberMealsPane" role="tabpanel" aria-labelledby="member-meals-tab">
+                      <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="mb-0">Create and manage your own meals</h6>
+                        <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#memberMealBuilder" aria-expanded="false">
+                          New Meal
+                        </button>
+                      </div>
+                      <div class="collapse" id="memberMealBuilder">
+                        <div class="card border-secondary mb-3">
+                          <div class="card-body">
+                            <div class="row g-2 align-items-center mb-2">
+                              <div class="col-md-4">
+                                <label class="form-label fw-semibold">Meal Name</label>
+                                <input type="text" id="memberMealName" class="form-control" placeholder="e.g. Post-workout bowl" />
+                              </div>
+                              <div class="col-md-3">
+                                <label class="form-label fw-semibold">Tab</label>
+                                <select id="memberMealSlot" class="form-select">
+                                  {% for slot, label in meal_slot_labels.items() %}
+                                    <option value="{{ slot }}">{{ label }}</option>
+                                  {% endfor %}
+                                </select>
+                              </div>
+                              <div class="col-md-5">
+                                <label class="form-label fw-semibold">Description <span class="text-muted">(optional)</span></label>
+                                <input type="text" id="memberMealDescription" class="form-control" placeholder="Notes for when to use this meal" />
+                              </div>
+                            </div>
+
+                            <hr class="my-3">
+
+                            <p class="small text-muted mb-2">Add ingredients from the USDA database:</p>
+                            <div class="row g-2 align-items-center">
+                              <div class="col-md-6">
+                                <input type="text" id="memberMealFoodSearch" class="form-control" placeholder="Search foods (e.g. chicken breast)" />
+                              </div>
+                              <div class="col-md-2">
+                                <button type="button" id="memberMealFoodSearchBtn" class="btn btn-outline-primary w-100">Search</button>
+                              </div>
+                            </div>
+                            <div id="memberMealFoodResults" class="list-group mt-2 d-none"></div>
+
+                            <div class="mt-3">
+                              <h6 class="fw-semibold">Ingredients</h6>
+                              <div id="memberMealIngredientList"></div>
+                            </div>
+
+                            <div class="text-end mt-3">
+                              <button type="button" class="btn btn-success btn-sm" id="memberMealSaveBtn">Save Meal</button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <ul class="nav nav-pills small" id="memberOwnedMealTabs" role="tablist">
+                        {% for slot, label in meal_slot_labels.items() %}
+                          <li class="nav-item" role="presentation">
+                            <button class="nav-link {% if loop.first %}active{% endif %}" id="member-owned-tab-{{ slot }}" data-bs-toggle="pill" data-bs-target="#member-owned-panel-{{ slot }}" type="button" role="tab">{{ label }}</button>
+                          </li>
+                        {% endfor %}
+                      </ul>
+                      <div class="tab-content mt-3" id="memberOwnedMealContent">
+                        {% for slot, label in meal_slot_labels.items() %}
+                          <div class="tab-pane fade {% if loop.first %}show active{% endif %}" id="member-owned-panel-{{ slot }}" role="tabpanel" aria-labelledby="member-owned-tab-{{ slot }}" data-member-meal-slot="{{ slot }}">
+                            {% set member_slot_meals = member_meal_plan.get(slot) %}
+                            {% if member_slot_meals %}
+                              {% for meal in member_slot_meals %}
+                                <div class="border rounded-3 p-3 mb-3" data-member-meal-id="{{ meal.id }}">
+                                  <div class="d-flex justify-content-between align-items-start">
+                                    <div>
+                                      <h6 class="mb-1">{{ meal.name }}</h6>
+                                      {% if meal.description %}
+                                        <p class="mb-2 text-muted small">{{ meal.description }}</p>
+                                      {% endif %}
+                                      <p class="mb-2 small text-secondary">
+                                        {{ meal.macros.calories }} cal · {{ meal.macros.protein }}g protein · {{ meal.macros.carbs }}g carbs · {{ meal.macros.fats }}g fat
+                                      </p>
+                                    </div>
+                                    <div class="btn-group btn-group-sm">
+                                      <button type="button" class="btn btn-outline-primary add-member-meal-btn" data-meal-id="{{ meal.id }}">Add Meal</button>
+                                      <button type="button" class="btn btn-outline-danger delete-member-meal-btn" data-meal-id="{{ meal.id }}">Delete</button>
+                                    </div>
+                                  </div>
+                                  <ul class="mb-0 small mt-2">
+                                    {% for ingredient in meal.ingredients %}
+                                      <li>
+                                        <strong>{{ ingredient.name }}</strong>
+                                        — {{ ingredient.grams }} g{% if ingredient.ounces %} / {{ ingredient.ounces }} oz{% endif %}
+                                        {% if ingredient.volume_ml %}
+                                          ({{ ingredient.volume_ml }} ml{% if ingredient.fluid_oz %} / {{ ingredient.fluid_oz }} fl oz{% endif %})
+                                        {% endif %}
+                                      </li>
+                                    {% endfor %}
+                                  </ul>
+                                </div>
+                              {% endfor %}
+                            {% else %}
+                              <p class="text-muted small mb-0">No meals in {{ label.lower() }} yet.</p>
+                            {% endif %}
+                          </div>
+                        {% endfor %}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -398,10 +599,27 @@
               <div class="card macro-card protein shadow-sm">
                 <div class="card-body">
                   <h6 class="text-muted mb-2">PROTEIN</h6>
+                  {% set protein_target = macro_targets.protein %}
+                  {% set protein_percent = protein_target and protein_target > 0 and (totals.protein / protein_target * 100) or 0 %}
                   <h3 class="mb-1">{{ totals.protein | round(1) }}g</h3>
-                  <small class="text-muted"
-                    >{{ (totals.protein * 4) | round(0) | int }} cal</small
-                  >
+                  <small class="text-muted">{{ (totals.protein * 4) | round(1) }} cal</small>
+                  <div class="progress macro-progress mt-2" style="height: 8px;">
+                    <div
+                      class="progress-bar bg-info"
+                      id="proteinProgressBar"
+                      role="progressbar"
+                      style="width: {{ protein_percent | round(1) }}%;"
+                      aria-valuemin="0"
+                      aria-valuemax="{{ protein_target or 0 }}"
+                    ></div>
+                  </div>
+                  <div class="small mt-1" id="proteinProgressText">
+                    {% if protein_target %}
+                      <span class="text-muted">{{ totals.protein | round(1) }} / {{ protein_target | round(1) }} g</span>
+                    {% else %}
+                      <span class="text-muted">No target set</span>
+                    {% endif %}
+                  </div>
                 </div>
               </div>
             </div>
@@ -409,10 +627,27 @@
               <div class="card macro-card carbs shadow-sm">
                 <div class="card-body">
                   <h6 class="text-muted mb-2">CARBS</h6>
+                  {% set carbs_target = macro_targets.carbs %}
+                  {% set carbs_percent = carbs_target and carbs_target > 0 and (totals.carbs / carbs_target * 100) or 0 %}
                   <h3 class="mb-1">{{ totals.carbs | round(1) }}g</h3>
-                  <small class="text-muted"
-                    >{{ (totals.carbs * 4) | round(0) | int }} cal</small
-                  >
+                  <small class="text-muted">{{ (totals.carbs * 4) | round(1) }} cal</small>
+                  <div class="progress macro-progress mt-2" style="height: 8px;">
+                    <div
+                      class="progress-bar bg-primary"
+                      id="carbsProgressBar"
+                      role="progressbar"
+                      style="width: {{ carbs_percent | round(1) }}%;"
+                      aria-valuemin="0"
+                      aria-valuemax="{{ carbs_target or 0 }}"
+                    ></div>
+                  </div>
+                  <div class="small mt-1" id="carbsProgressText">
+                    {% if carbs_target %}
+                      <span class="text-muted">{{ totals.carbs | round(1) }} / {{ carbs_target | round(1) }} g</span>
+                    {% else %}
+                      <span class="text-muted">No target set</span>
+                    {% endif %}
+                  </div>
                 </div>
               </div>
             </div>
@@ -420,10 +655,27 @@
               <div class="card macro-card fats shadow-sm">
                 <div class="card-body">
                   <h6 class="text-muted mb-2">FATS</h6>
+                  {% set fats_target = macro_targets.fats %}
+                  {% set fats_percent = fats_target and fats_target > 0 and (totals.fat / fats_target * 100) or 0 %}
                   <h3 class="mb-1">{{ totals.fat | round(1) }}g</h3>
-                  <small class="text-muted"
-                    >{{ (totals.fat * 9) | round(0) | int }} cal</small
-                  >
+                  <small class="text-muted">{{ (totals.fat * 9) | round(1) }} cal</small>
+                  <div class="progress macro-progress mt-2" style="height: 8px;">
+                    <div
+                      class="progress-bar bg-warning"
+                      id="fatsProgressBar"
+                      role="progressbar"
+                      style="width: {{ fats_percent | round(1) }}%;"
+                      aria-valuemin="0"
+                      aria-valuemax="{{ fats_target or 0 }}"
+                    ></div>
+                  </div>
+                  <div class="small mt-1" id="fatsProgressText">
+                    {% if fats_target %}
+                      <span class="text-muted">{{ totals.fat | round(1) }} / {{ fats_target | round(1) }} g</span>
+                    {% else %}
+                      <span class="text-muted">No target set</span>
+                    {% endif %}
+                  </div>
                 </div>
               </div>
             </div>
@@ -621,47 +873,34 @@
               </div>
           </div>
 
-              <!-- selected-day details -->
-              <div class="text-center mt-3">
-                <div class="small text-muted">
-                  Selected: {{ (selected_date.strftime('%A, %B %d, %Y') if
-                  selected_date else '') }}
-                </div>
-                <div class="mt-2 border rounded p-3 bg-light text-start">
-                  <div>
-                    <strong>Weight:</strong> {{ selected_weight if
-                    selected_weight is not none else 'No entry' }}
-                  </div>
-                  <div>
-                    <strong>Food:</strong>
-                    <div>
-                      Calories: {% if selected_food_calories is not none %}{{
-                      selected_food_calories }} kcal{% else %}No entry{% endif
-                      %}
-                    </div>
-                    <div>
-                      Protein: {% if selected_food_protein is defined and
-                      selected_food_protein is not none %}{{
-                      selected_food_protein }} g{% else %}—{% endif %}
-                    </div>
-                    <div>
-                      Carbs: {% if selected_food_carbs is defined and
-                      selected_food_carbs is not none %}{{ selected_food_carbs
-                      }} g{% else %}—{% endif %}
-                    </div>
-                    <div>
-                      Fats: {% if selected_food_fats is defined and
-                      selected_food_fats is not none %}{{ selected_food_fats }}
-                      g{% else %}—{% endif %}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+    {% set templates_active = request.endpoint in ['template.list_templates', 'template.view_template', 'template.start_workout', 'template.view_session'] %}
+
+    <nav class="bottom-nav shadow-sm">
+      <div class="container px-0">
+        <div class="d-flex justify-content-around align-items-center">
+          <a href="{{ url_for('member.dashboard') }}" class="nav-link {% if active_tab == 'dashboard' %}active{% endif %}">
+            <i class="bi bi-speedometer2"></i>
+            <span>Dashboard</span>
+          </a>
+          <a href="{{ url_for('member.dashboard', view='profile') }}" class="nav-link {% if active_tab == 'profile' %}active{% endif %}">
+            <i class="bi bi-person-circle"></i>
+            <span>Profile</span>
+          </a>
+          <a href="{{ url_for('member.view_progress') }}" class="nav-link {% if request.endpoint == 'member.view_progress' %}active{% endif %}">
+            <i class="bi bi-graph-up"></i>
+            <span>Progress</span>
+          </a>
+          <a href="{{ url_for('template.list_templates') }}" class="nav-link {% if templates_active %}active{% endif %}">
+            <i class="bi bi-collection"></i>
+            <span>Templates</span>
+          </a>
+          <a href="{{ url_for('member.dashboard', view='calendar') }}" class="nav-link {% if active_tab == 'calendar' %}active{% endif %}">
+            <i class="bi bi-calendar-event"></i>
+            <span>Calendar</span>
+          </a>
         </div>
       </div>
-    </div>
+    </nav>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
@@ -671,6 +910,21 @@
       const unitSelect = document.getElementById("log_unit");
       const quantityInput = document.getElementById("log_quantity");
       const form = document.getElementById("foodForm");
+      const macroTargets = {
+        calories: parseFloat("{{ calorie_goal_value or 0 }}") || 0,
+        protein: parseFloat("{{ macro_targets.protein or 0 }}") || 0,
+        carbs: parseFloat("{{ macro_targets.carbs or 0 }}") || 0,
+        fats: parseFloat("{{ macro_targets.fats or 0 }}") || 0,
+      };
+      const memberMealNameInput = document.getElementById("memberMealName");
+      const memberMealSlotSelect = document.getElementById("memberMealSlot");
+      const memberMealDescriptionInput = document.getElementById("memberMealDescription");
+      const memberMealFoodSearch = document.getElementById("memberMealFoodSearch");
+      const memberMealFoodSearchBtn = document.getElementById("memberMealFoodSearchBtn");
+      const memberMealFoodResults = document.getElementById("memberMealFoodResults");
+      const memberMealIngredientList = document.getElementById("memberMealIngredientList");
+      const memberMealSaveBtn = document.getElementById("memberMealSaveBtn");
+      const memberMealBuilderCollapse = document.getElementById("memberMealBuilder");
 
       // Fetch suggestions
       async function fetchFoods() {
@@ -736,6 +990,243 @@
         }
       }
 
+      function updateMacroProgress(barId, textId, grams, target) {
+        const bar = document.getElementById(barId);
+        const textEl = document.getElementById(textId);
+        if (!bar || !textEl) return;
+
+        if (target && target > 0) {
+          const percent = Math.min((grams / target) * 100, 100);
+          bar.style.width = `${percent.toFixed(1)}%`;
+          bar.setAttribute("aria-valuenow", grams.toFixed(1));
+          textEl.innerHTML = `<span class="text-muted">${grams.toFixed(1)} / ${target.toFixed(1)} g</span>`;
+        } else {
+          bar.style.width = "0%";
+          bar.setAttribute("aria-valuenow", grams.toFixed(1));
+          textEl.innerHTML = `<span class="text-muted">No target set</span>`;
+        }
+      }
+
+      function memberCreateUnitOption(value, label, selectedUnit) {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = label;
+        if (selectedUnit && selectedUnit.toLowerCase() === value.toLowerCase()) {
+          option.selected = true;
+        }
+        return option;
+      }
+
+      async function memberPopulateUnits(selectEl, foodId, selectedUnit) {
+        if (!selectEl) return;
+        selectEl.innerHTML = "";
+        selectEl.appendChild(memberCreateUnitOption("g", "g (grams)", selectedUnit || "g"));
+        try {
+          const res = await fetch(`/member/get-measures/${foodId}`);
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data && data.measures) {
+            data.measures.forEach((entry) => {
+              if (!entry.measure_name) return;
+              const value = entry.measure_name.toLowerCase();
+              if (value === "g") return;
+              selectEl.appendChild(memberCreateUnitOption(value, entry.measure_name, selectedUnit));
+            });
+          }
+        } catch (err) {
+          console.error(err);
+        }
+      }
+
+      function ensureMemberMealEmptyState(slot) {
+        const container = document.querySelector(`[data-member-meal-slot=\"${slot}\"]`);
+        if (!container) return;
+        const hasCard = container.querySelector("[data-member-meal-id]");
+        let emptyMessage = container.querySelector(".member-meals-empty");
+        if (!hasCard) {
+          if (!emptyMessage) {
+            emptyMessage = document.createElement("p");
+            emptyMessage.className = "text-muted small mb-0 member-meals-empty";
+            emptyMessage.textContent = `No meals in ${slot.replace('meal', 'meal ')} yet.`;
+            container.appendChild(emptyMessage);
+          }
+        } else if (emptyMessage) {
+          emptyMessage.remove();
+        }
+      }
+
+      function memberAddIngredientRow(food, preset = {}) {
+        if (!memberMealIngredientList) return;
+        const row = document.createElement("div");
+        row.className = "card card-body mb-2 member-ingredient-row";
+        const foodId = food ? food.id : preset.food_id;
+        const foodName = food ? food.name : preset.name;
+        const quantity = preset.quantity || 1;
+        const unit = preset.unit || "g";
+        const notes = preset.notes || "";
+        const gramsPerUnit = preset.grams != null ? Number(preset.grams) : null;
+        const volumePerUnit = preset.volume_ml != null ? Number(preset.volume_ml) : null;
+
+        row.dataset.foodId = foodId;
+        row.dataset.gramsPerUnit = gramsPerUnit != null ? gramsPerUnit : "";
+        row.dataset.volumePerUnit = volumePerUnit != null ? volumePerUnit : "";
+
+        row.innerHTML = `
+          <div class="d-flex justify-content-between align-items-center">
+            <div><strong>${foodName}</strong></div>
+            <button type="button" class="btn btn-sm btn-outline-danger member-remove-ingredient">Remove</button>
+          </div>
+          <div class="row mt-2 g-2">
+            <div class="col-md-4">
+              <label class="form-label">Quantity</label>
+              <input type="number" step="0.1" class="form-control member-quantity" value="${quantity}" required />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Unit</label>
+              <select class="form-select member-unit"></select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Notes</label>
+              <input type="text" class="form-control member-notes" value="${notes}" placeholder="optional" />
+            </div>
+          </div>
+        `;
+
+        memberMealIngredientList.appendChild(row);
+        const removeBtn = row.querySelector(".member-remove-ingredient");
+        if (removeBtn) {
+          removeBtn.addEventListener("click", () => {
+            row.remove();
+          });
+        }
+
+        const unitSelectEl = row.querySelector(".member-unit");
+        memberPopulateUnits(unitSelectEl, foodId, unit);
+      }
+
+      function collectMemberMealIngredients() {
+        if (!memberMealIngredientList) return [];
+        const rows = memberMealIngredientList.querySelectorAll(".member-ingredient-row");
+        const ingredients = [];
+        rows.forEach((row) => {
+          const foodId = Number(row.dataset.foodId);
+          if (!foodId) return;
+          const quantityInput = row.querySelector(".member-quantity");
+          const unitSelectEl = row.querySelector(".member-unit");
+          const notesInput = row.querySelector(".member-notes");
+          const quantity = quantityInput ? Number(quantityInput.value || 0) : 0;
+          if (!quantity || quantity <= 0) return;
+          const unitValue = unitSelectEl ? unitSelectEl.value || "g" : "g";
+          const gramsPerUnit = row.dataset.gramsPerUnit ? Number(row.dataset.gramsPerUnit) : null;
+          const volumePerUnit = row.dataset.volumePerUnit ? Number(row.dataset.volumePerUnit) : null;
+          ingredients.push({
+            food_id: foodId,
+            quantity: quantity,
+            unit: unitValue,
+            grams: gramsPerUnit,
+            volume_ml: volumePerUnit,
+            notes: notesInput ? notesInput.value : ""
+          });
+        });
+        return ingredients;
+      }
+
+      function renderMemberMealCard(meal) {
+        const container = document.querySelector(`[data-member-meal-slot=\"${meal.slot}\"]`);
+        if (!container) return;
+        const card = document.createElement("div");
+        card.className = "border rounded-3 p-3 mb-3";
+        card.dataset.memberMealId = meal.id;
+        const macros = meal.macros || {};
+        const calories = Number(macros.calories || 0).toFixed(1);
+        const protein = Number(macros.protein || 0).toFixed(1);
+        const carbs = Number(macros.carbs || 0).toFixed(1);
+        const fats = Number(macros.fats || 0).toFixed(1);
+        const ingredientsHtml = (meal.ingredients || [])
+          .map((ingredient) => {
+            const weight = `${ingredient.grams} g`;
+            const extras = [];
+            if (ingredient.ounces) extras.push(`${ingredient.ounces} oz`);
+            if (ingredient.volume_ml) {
+              const vol = `${ingredient.volume_ml} ml`;
+              extras.push(ingredient.fluid_oz ? `${vol} / ${ingredient.fluid_oz} fl oz` : vol);
+            }
+            return `<li><strong>${ingredient.name}</strong> — ${weight}${extras.length ? " (" + extras.join(" / ") + ")" : ""}</li>`;
+          })
+          .join("");
+
+        card.innerHTML = `
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <h6 class="mb-1">${meal.name}</h6>
+              ${meal.description ? `<p class="mb-2 text-muted small">${meal.description}</p>` : ""}
+              <p class="mb-2 small text-secondary">
+                ${calories} cal · ${protein}g protein · ${carbs}g carbs · ${fats}g fat
+              </p>
+            </div>
+            <div class="btn-group btn-group-sm">
+              <button type="button" class="btn btn-outline-primary add-member-meal-btn" data-meal-id="${meal.id}">Add Meal</button>
+              <button type="button" class="btn btn-outline-danger delete-member-meal-btn" data-meal-id="${meal.id}">Delete</button>
+            </div>
+          </div>
+          <ul class="mb-0 small mt-2">
+            ${ingredientsHtml || "<li>No ingredients</li>"}
+          </ul>
+        `;
+
+        const emptyState = container.querySelector(".member-meals-empty");
+        if (emptyState) emptyState.remove();
+        container.prepend(card);
+      }
+
+      async function memberFetchFoods() {
+        if (!memberMealFoodSearch || !memberMealFoodResults) return;
+        const query = memberMealFoodSearch.value.trim();
+        if (query.length < 2) {
+          memberMealFoodResults.classList.add("d-none");
+          memberMealFoodResults.innerHTML = "";
+          return;
+        }
+        try {
+          const res = await fetch(`/member/search-foods?q=${encodeURIComponent(query)}&unit=g&quantity=1`);
+          const data = await res.json();
+          memberMealFoodResults.innerHTML = "";
+          if (!data.results || !data.results.length) {
+            memberMealFoodResults.classList.add("d-none");
+            return;
+          }
+          data.results.forEach((food) => {
+            const item = document.createElement("button");
+            item.type = "button";
+            item.className = "list-group-item list-group-item-action";
+            item.innerHTML = `<div><strong>${food.name}</strong></div><small>${food.calories} kcal</small>`;
+            item.addEventListener("click", async () => {
+              memberAddIngredientRow({ id: food.id, name: food.name });
+              memberMealFoodResults.classList.add("d-none");
+              memberMealFoodResults.innerHTML = "";
+              memberMealFoodSearch.value = "";
+            });
+            memberMealFoodResults.appendChild(item);
+          });
+          memberMealFoodResults.classList.remove("d-none");
+        } catch (err) {
+          console.error(err);
+          memberMealFoodResults.classList.add("d-none");
+        }
+      }
+
+      function resetMemberMealBuilder() {
+        if (memberMealNameInput) memberMealNameInput.value = "";
+        if (memberMealDescriptionInput) memberMealDescriptionInput.value = "";
+        if (memberMealSlotSelect) memberMealSlotSelect.selectedIndex = 0;
+        if (memberMealIngredientList) memberMealIngredientList.innerHTML = "";
+        if (memberMealFoodResults) {
+          memberMealFoodResults.classList.add("d-none");
+          memberMealFoodResults.innerHTML = "";
+        }
+        if (memberMealFoodSearch) memberMealFoodSearch.value = "";
+      }
+
       // Event listeners
       searchInput.addEventListener("input", fetchFoods);
 
@@ -785,10 +1276,7 @@
 
       function formatNumber(value, decimals = 1) {
         const num = Number(value || 0);
-        if (!Number.isFinite(num)) return "0";
-        if (Math.abs(num - Math.round(num)) < 1e-9) {
-          return Math.round(num).toString();
-        }
+        if (!Number.isFinite(num)) return (0).toFixed(decimals);
         return num.toFixed(decimals);
       }
 
@@ -879,34 +1367,38 @@
           const carbsCard = document.querySelector(".macro-card.carbs");
           const fatsCard = document.querySelector(".macro-card.fats");
 
+          const proteinGrams = Number(data.protein || 0);
+          const carbGrams = Number(data.carbs || 0);
+          const fatGrams = Number((data.fat ?? data.fats) || 0);
+
           if (proteinCard) {
-            const grams = Number(data.protein || 0);
             const gramsLabel = proteinCard.querySelector("h3");
-            if (gramsLabel) gramsLabel.textContent = `${grams.toFixed(1)}g`;
+            if (gramsLabel) gramsLabel.textContent = `${proteinGrams.toFixed(1)}g`;
             const small = proteinCard.querySelector("small");
-            if (small) small.textContent = `${Math.round(grams * 4)} cal`;
+            if (small) small.textContent = `${(proteinGrams * 4).toFixed(1)} cal`;
+            updateMacroProgress("proteinProgressBar", "proteinProgressText", proteinGrams, macroTargets.protein);
           }
 
           if (carbsCard) {
-            const grams = Number(data.carbs || 0);
             const gramsLabel = carbsCard.querySelector("h3");
-            if (gramsLabel) gramsLabel.textContent = `${grams.toFixed(1)}g`;
+            if (gramsLabel) gramsLabel.textContent = `${carbGrams.toFixed(1)}g`;
             const small = carbsCard.querySelector("small");
-            if (small) small.textContent = `${Math.round(grams * 4)} cal`;
+            if (small) small.textContent = `${(carbGrams * 4).toFixed(1)} cal`;
+            updateMacroProgress("carbsProgressBar", "carbsProgressText", carbGrams, macroTargets.carbs);
           }
 
           if (fatsCard) {
-            const grams = Number((data.fat ?? data.fats) || 0);
             const gramsLabel = fatsCard.querySelector("h3");
-            if (gramsLabel) gramsLabel.textContent = `${grams.toFixed(1)}g`;
+            if (gramsLabel) gramsLabel.textContent = `${fatGrams.toFixed(1)}g`;
             const small = fatsCard.querySelector("small");
-            if (small) small.textContent = `${Math.round(grams * 9)} cal`;
+            if (small) small.textContent = `${(fatGrams * 9).toFixed(1)} cal`;
+            updateMacroProgress("fatsProgressBar", "fatsProgressText", fatGrams, macroTargets.fats);
           }
 
-          const goal = parseFloat("{{ user.calorie_goal or 2000 }}");
+          const goal = macroTargets.calories || 2000;
           const calories = Number(data.calories || 0);
           const percent = goal ? Math.min((calories / goal) * 100, 100) : 0;
-          const progressBar = document.querySelector(".progress-bar");
+          const progressBar = document.getElementById("calorieProgressBar");
           if (progressBar) {
             progressBar.style.width = percent.toFixed(1) + "%";
             progressBar.textContent = percent.toFixed(1) + "%";
@@ -917,7 +1409,7 @@
             "svg.progress-ring text[font-size='32']"
           );
           if (calorieText) {
-            calorieText.textContent = Math.round(calories);
+            calorieText.textContent = calories.toFixed(1);
           }
 
           const progressCircle = document.querySelector(
@@ -932,19 +1424,15 @@
             progressCircle.style.strokeDashoffset = offset.toFixed(2);
           }
 
-          const remainElem = document.querySelector(".text-muted.mb-0 span");
+          const remainElem = document.getElementById("calorieRemainingText");
           if (remainElem) {
             const remaining = goal - calories;
             if (remaining > 0) {
               remainElem.className = "text-success";
-              remainElem.textContent = `${Math.round(
-                remaining
-              )} calories remaining`;
+              remainElem.textContent = `${remaining.toFixed(1)} calories remaining`;
             } else {
               remainElem.className = "text-warning";
-              remainElem.textContent = `${Math.round(
-                -remaining
-              )} calories over goal`;
+              remainElem.textContent = `${(-remaining).toFixed(1)} calories over goal`;
             }
           }
           return data;
@@ -998,10 +1486,10 @@
       }
 
       const customForm = document.getElementById("customFoodForm");
-      if (customForm) {
-        customForm.addEventListener("submit", async (e) => {
-          e.preventDefault();
-          const formData = new FormData(customForm);
+  if (customForm) {
+    customForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const formData = new FormData(customForm);
 
           try {
             const res = await fetch(customForm.action, {
@@ -1025,11 +1513,148 @@
           } catch (err) {
             console.error(err);
             showMessage("Error adding food.", "danger");
-          }
-        });
+      }
+    });
+  }
+
+  if (memberMealFoodSearch) {
+    memberMealFoodSearch.addEventListener("input", () => memberFetchFoods());
+    memberMealFoodSearch.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        memberFetchFoods();
+      }
+    });
+  }
+
+  if (memberMealFoodSearchBtn) {
+    memberMealFoodSearchBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      memberFetchFoods();
+    });
+  }
+
+  if (memberMealSaveBtn) {
+    memberMealSaveBtn.addEventListener("click", async () => {
+      if (!memberMealNameInput) return;
+      const name = memberMealNameInput.value.trim();
+      if (!name) {
+        alert("Please provide a meal name.");
+        return;
+      }
+      const ingredients = collectMemberMealIngredients();
+      if (!ingredients.length) {
+        alert("Please add at least one ingredient.");
+        return;
       }
 
-      handleEmptyState();
-    </script>
+      const payload = {
+        name,
+        slot: memberMealSlotSelect ? memberMealSlotSelect.value : "meal1",
+        description: memberMealDescriptionInput ? memberMealDescriptionInput.value : "",
+        ingredients,
+      };
+
+      try {
+        const res = await fetch("/member/meals", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (data.status === "success") {
+          renderMemberMealCard(data.meal);
+          ensureMemberMealEmptyState(data.meal.slot);
+          resetMemberMealBuilder();
+          showMessage("Meal saved.", "success");
+          if (memberMealBuilderCollapse) {
+            const collapseInstance = bootstrap.Collapse.getOrCreateInstance(memberMealBuilderCollapse, { toggle: false });
+            collapseInstance.hide();
+          }
+        } else {
+          alert(data.message || "Unable to save meal.");
+        }
+      } catch (err) {
+        console.error(err);
+        alert("Error saving meal.");
+      }
+    });
+  }
+
+  document.addEventListener("click", async (event) => {
+    const trainerButton = event.target.closest(".add-meal-btn");
+    if (trainerButton) {
+      const mealId = trainerButton.dataset.mealId;
+      if (!mealId) return;
+      try {
+        const res = await fetch(`/member/add-meal/${mealId}`, { method: "POST" });
+        const data = await res.json();
+        if (data.status === "success") {
+          (data.logs || []).forEach((log) => renderLogRow(log));
+          await updateTotals(data.totals);
+          showMessage(data.message || "Meal added to log.", "success");
+        } else {
+          showMessage(data.message || "Unable to add meal.", "danger");
+        }
+      } catch (err) {
+        console.error(err);
+        showMessage("Error adding meal.", "danger");
+      }
+      return;
+    }
+
+    const memberAddBtn = event.target.closest(".add-member-meal-btn");
+    if (memberAddBtn) {
+      const mealId = memberAddBtn.dataset.mealId;
+      if (!mealId) return;
+      try {
+        const res = await fetch(`/member/add-member-meal/${mealId}`, { method: "POST" });
+        const data = await res.json();
+        if (data.status === "success") {
+          (data.logs || []).forEach((log) => renderLogRow(log));
+          await updateTotals(data.totals);
+          showMessage(data.message || "Meal added to log.", "success");
+        } else {
+          showMessage(data.message || "Unable to add meal.", "danger");
+        }
+      } catch (err) {
+        console.error(err);
+        showMessage("Error adding meal.", "danger");
+      }
+      return;
+    }
+
+    const memberDeleteBtn = event.target.closest(".delete-member-meal-btn");
+    if (memberDeleteBtn) {
+      const mealId = memberDeleteBtn.dataset.mealId;
+      if (!mealId || !confirm("Delete this meal?")) return;
+      try {
+        const res = await fetch(`/member/meals/${mealId}`, { method: "DELETE" });
+        const data = await res.json();
+        if (data.status === "success") {
+          const card = memberDeleteBtn.closest("[data-member-meal-id]");
+          const slotContainer = card ? card.closest("[data-member-meal-slot]") : null;
+          const slot = slotContainer ? slotContainer.dataset.memberMealSlot : null;
+          if (card) card.remove();
+          if (slot) ensureMemberMealEmptyState(slot);
+          showMessage("Meal removed.", "success");
+        } else {
+          showMessage(data.message || "Unable to delete meal.", "danger");
+        }
+      } catch (err) {
+        console.error(err);
+        showMessage("Error deleting meal.", "danger");
+      }
+    }
+  });
+
+  document
+    .querySelectorAll("[data-member-meal-slot]")
+    .forEach((container) => ensureMemberMealEmptyState(container.dataset.memberMealSlot));
+
+  handleEmptyState();
+</script>
   </body>
 </html>

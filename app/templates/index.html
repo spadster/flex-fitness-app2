@@ -26,6 +26,18 @@
 
   <!-- Main content -->
   <div class="container text-center d-flex flex-column justify-content-center align-items-center" style="min-height: 90vh;">
+    <div class="w-100" style="max-width: 500px;">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, msg in messages %}
+            <div class="alert alert-{{ category if category else 'info' }} alert-dismissible fade show" role="alert">
+              {{ msg }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+    </div>
     <h1 class="fw-bold">Welcome message!</h1>
     <p class="text-muted mb-5">Start your fitness journey today.</p>
 

@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Start Workout</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+  <style>
+    body {
+      padding-bottom: 80px;
+    }
+
+    .exercise-card { border-left: 4px solid #0d6efd; }
+    .exercise-card.custom { border-left-color: #6c757d; }
+
+    .bottom-nav {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: #ffffff;
+      border-top: 1px solid rgba(0, 0, 0, 0.1);
+      z-index: 1050;
+    }
+
+    .bottom-nav .nav-link {
+      color: #6c757d;
+      font-size: 0.85rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0.5rem 0;
+    }
+
+    .bottom-nav .nav-link .bi {
+      font-size: 1.25rem;
+    }
+
+    .bottom-nav .nav-link.active {
+      color: #0d6efd;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body class="bg-light">
+  <div class="container my-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div>
+        <h1 class="h3 mb-0">{{ template.name }}</h1>
+        <p class="text-muted mb-0">Log the sets performed. You can add or remove exercises and sets as you go.</p>
+        {% if logging_for_client %}
+          <p class="small text-muted mb-0">Logging for {{ target_user.first_name }} {{ target_user.last_name }}</p>
+        {% endif %}
+      </div>
+      <a href="{{ url_for('template.list_templates') }}" class="btn btn-outline-secondary btn-sm">Back</a>
+    </div>
+
+    <form method="POST" id="workoutForm" class="mb-4">
+      <input type="hidden" name="workout_payload" id="workoutPayload">
+      <input type="hidden" name="started_at" value="{{ start_time_iso }}">
+      {% if logging_for_client %}
+        <input type="hidden" name="for_user_id" value="{{ target_user.id }}">
+      {% endif %}
+
+      <div id="exercisesContainer"></div>
+
+      <div class="card mb-3">
+        <div class="card-body">
+          <h5 class="card-title mb-3">Add Exercise</h5>
+          <div class="row g-2 align-items-end">
+            <div class="col-md-8">
+              <label class="form-label">Exercise Name</label>
+              <input type="text" id="newExerciseName" class="form-control" placeholder="e.g. Bench Press">
+            </div>
+            <div class="col-md-4">
+              <button type="button" id="addExerciseButton" class="btn btn-primary w-100">Add</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="d-flex justify-content-between align-items-center">
+        <div class="text-muted">Started at: {{ start_time_display }}</div>
+        <button type="submit" class="btn btn-success btn-lg">Log Workout</button>
+      </div>
+    </form>
+  </div>
+
+  {% set trainer_clients_active = request.endpoint in ['trainer.dashboard_trainer', 'trainer.client_detail'] %}
+  {% set templates_active = request.endpoint in ['template.list_templates', 'template.view_template', 'template.start_workout', 'template.view_session'] %}
+
+  <nav class="bottom-nav shadow-sm">
+    <div class="container px-0">
+      <div class="d-flex justify-content-around align-items-center">
+        {% if current_user.is_authenticated and current_user.role == 'trainer' %}
+          <a href="{{ url_for('trainer.dashboard_trainer') }}" class="nav-link {% if trainer_clients_active %}active{% endif %}">
+            <i class="bi bi-people"></i>
+            <span>Clients</span>
+          </a>
+          <a href="{{ url_for('template.list_templates') }}" class="nav-link {% if templates_active %}active{% endif %}">
+            <i class="bi bi-collection"></i>
+            <span>Templates</span>
+          </a>
+          <a href="{{ url_for('auth.logout') }}" class="nav-link">
+            <i class="bi bi-box-arrow-right"></i>
+            <span>Logout</span>
+          </a>
+        {% else %}
+          <a href="{{ url_for('member.dashboard') }}" class="nav-link {% if request.endpoint == 'member.dashboard' and request.args.get('view') not in ['profile', 'calendar'] %}active{% endif %}">
+            <i class="bi bi-speedometer2"></i>
+            <span>Dashboard</span>
+          </a>
+          <a href="{{ url_for('member.dashboard', view='profile') }}" class="nav-link {% if request.endpoint == 'member.dashboard' and request.args.get('view') == 'profile' %}active{% endif %}">
+            <i class="bi bi-person-circle"></i>
+            <span>Profile</span>
+          </a>
+          <a href="{{ url_for('member.view_progress') }}" class="nav-link {% if request.endpoint == 'member.view_progress' %}active{% endif %}">
+            <i class="bi bi-graph-up"></i>
+            <span>Progress</span>
+          </a>
+          <a href="{{ url_for('template.list_templates') }}" class="nav-link {% if templates_active %}active{% endif %}">
+            <i class="bi bi-collection"></i>
+            <span>Templates</span>
+          </a>
+          <a href="{{ url_for('member.dashboard', view='calendar') }}" class="nav-link {% if request.endpoint == 'member.dashboard' and request.args.get('view') == 'calendar' %}active{% endif %}">
+            <i class="bi bi-calendar-event"></i>
+            <span>Calendar</span>
+          </a>
+        {% endif %}
+      </div>
+    </div>
+  </nav>
+
+  <script>
+    const initialData = {{ initial_data | tojson | safe }};
+    const exercisesContainer = document.getElementById('exercisesContainer');
+    const workoutForm = document.getElementById('workoutForm');
+    const payloadInput = document.getElementById('workoutPayload');
+    const addExerciseButton = document.getElementById('addExerciseButton');
+    const newExerciseName = document.getElementById('newExerciseName');
+
+    let workoutState = Array.isArray(initialData) && initialData.length ? JSON.parse(JSON.stringify(initialData)) : [];
+    if (!workoutState.length) {
+      workoutState.push({ templateExerciseId: null, name: '', sets: [{ reps: null, weight: null }] });
+    }
+
+    function renderExercises() {
+      exercisesContainer.innerHTML = '';
+      workoutState.forEach((exercise, exIndex) => {
+        const card = document.createElement('div');
+        card.className = `card exercise-card mb-3 ${exercise.templateExerciseId ? '' : 'custom'}`;
+        card.dataset.index = exIndex;
+        card.innerHTML = `
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start mb-3">
+              <div class="w-100 me-3">
+                <label class="form-label">Exercise</label>
+                <input type="text" class="form-control exercise-name-input" value="${exercise.name || ''}" placeholder="Exercise name">
+              </div>
+              <button type="button" class="btn btn-outline-danger btn-sm remove-exercise">Remove</button>
+            </div>
+            <div class="sets-wrapper"></div>
+            <button type="button" class="btn btn-outline-primary btn-sm add-set mt-2">Add Set</button>
+          </div>
+        `;
+
+        const setsWrapper = card.querySelector('.sets-wrapper');
+        const sets = exercise.sets && exercise.sets.length ? exercise.sets : [{ reps: null, weight: null }];
+        exercise.sets = sets;
+        sets.forEach((set, setIndex) => {
+          const row = document.createElement('div');
+          row.className = 'row g-2 align-items-end mb-2 set-row';
+          row.dataset.setIndex = setIndex;
+          row.innerHTML = `
+            <div class="col-md-4">
+              <label class="form-label small">Set ${setIndex + 1} Reps</label>
+              <input type="number" class="form-control set-reps" min="0" value="${set.reps ?? ''}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small">Weight (lbs)</label>
+              <input type="number" step="0.1" class="form-control set-weight" value="${set.weight ?? ''}">
+            </div>
+            <div class="col-md-4 d-flex align-items-end">
+              <button type="button" class="btn btn-outline-danger btn-sm remove-set w-100">Remove Set</button>
+            </div>
+          `;
+          setsWrapper.appendChild(row);
+        });
+
+        exercisesContainer.appendChild(card);
+      });
+    }
+
+    function ensureAtLeastOneSet(exercise) {
+      if (!exercise.sets || !exercise.sets.length) {
+        exercise.sets = [{ reps: null, weight: null }];
+      }
+    }
+
+    exercisesContainer.addEventListener('input', (event) => {
+      const card = event.target.closest('.exercise-card');
+      if (!card) return;
+      const exIndex = Number(card.dataset.index);
+      const exercise = workoutState[exIndex];
+      if (!exercise) return;
+
+      if (event.target.classList.contains('exercise-name-input')) {
+        exercise.name = event.target.value;
+        return;
+      }
+
+      const row = event.target.closest('.set-row');
+      if (!row) return;
+      const setIndex = Number(row.dataset.setIndex);
+      ensureAtLeastOneSet(exercise);
+      const set = exercise.sets[setIndex];
+      if (!set) return;
+
+      if (event.target.classList.contains('set-reps')) {
+        set.reps = event.target.value;
+      }
+      if (event.target.classList.contains('set-weight')) {
+        set.weight = event.target.value;
+      }
+    });
+
+    exercisesContainer.addEventListener('click', (event) => {
+      const card = event.target.closest('.exercise-card');
+      if (!card) return;
+      const exIndex = Number(card.dataset.index);
+      const exercise = workoutState[exIndex];
+      if (!exercise) return;
+
+      if (event.target.classList.contains('remove-exercise')) {
+        workoutState.splice(exIndex, 1);
+        if (!workoutState.length) {
+          workoutState.push({ templateExerciseId: null, name: '', sets: [{ reps: null, weight: null }] });
+        }
+        renderExercises();
+        return;
+      }
+
+      if (event.target.classList.contains('add-set')) {
+        ensureAtLeastOneSet(exercise);
+        const lastSet = exercise.sets.length ? exercise.sets[exercise.sets.length - 1] : { reps: null, weight: null };
+        exercise.sets.push({ reps: lastSet.reps ?? null, weight: lastSet.weight ?? null });
+        renderExercises();
+        return;
+      }
+
+      if (event.target.classList.contains('remove-set')) {
+        const row = event.target.closest('.set-row');
+        if (!row) return;
+        const setIndex = Number(row.dataset.setIndex);
+        ensureAtLeastOneSet(exercise);
+        exercise.sets.splice(setIndex, 1);
+        renderExercises();
+        return;
+      }
+    });
+
+    addExerciseButton?.addEventListener('click', () => {
+      const name = (newExerciseName.value || '').trim();
+      if (!name) {
+        newExerciseName.focus();
+        return;
+      }
+      workoutState.push({ templateExerciseId: null, name, sets: [{ reps: null, weight: null }] });
+      newExerciseName.value = '';
+      renderExercises();
+    });
+
+    workoutForm.addEventListener('submit', (event) => {
+      const payload = workoutState
+        .map(ex => ({
+          templateExerciseId: ex.templateExerciseId,
+          name: ex.name,
+          sets: (ex.sets || []).map(set => ({ reps: set.reps, weight: set.weight }))
+        }))
+        .filter(ex => ex.name && ex.sets && ex.sets.length);
+
+      if (!payload.length) {
+        event.preventDefault();
+        alert('Please add at least one exercise with a set.');
+        return;
+      }
+
+      payloadInput.value = JSON.stringify(payload);
+    });
+
+    renderExercises();
+  </script>
+</body>
+</html>

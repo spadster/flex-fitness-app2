@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Client Detail</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <style>
+    body {
+      padding-bottom: 80px;
+    }
+
+    .bottom-nav {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: #ffffff;
+      border-top: 1px solid rgba(0, 0, 0, 0.1);
+      z-index: 1050;
+    }
+
+    .bottom-nav .nav-link {
+      color: #6c757d;
+      font-size: 0.85rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0.5rem 0;
+    }
+
+    .bottom-nav .nav-link .bi {
+      font-size: 1.25rem;
+    }
+
+    .bottom-nav .nav-link.active {
+      color: #0d6efd;
+      font-weight: 600;
+    }
+
+    .calendar-day {
+      min-height: 110px;
+    }
+  </style>
+</head>
+<body class="bg-light">
+  <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <div class="container">
+      <a class="navbar-brand ms-auto fw" href="{{ url_for('main.home') }}">Temp</a>
+      <a href="{{ url_for('auth.logout') }}" class="btn btn-outline-light ms-3">Log Out</a>
+    </div>
+  </nav>
+
+  <div class="container mt-4 mb-5">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div>
+        <h1 class="h3 mb-1">{{ client.first_name }} {{ client.last_name }}</h1>
+        <div class="text-muted">Client overview</div>
+      </div>
+      <a href="{{ url_for('trainer.dashboard_trainer') }}" class="btn btn-outline-secondary">Back</a>
+    </div>
+
+    <ul class="nav nav-pills mb-4">
+      <li class="nav-item">
+        <a class="nav-link {% if view != 'calendar' %}active{% endif %}" href="{{ url_for('trainer.client_detail', member_id=client.id) }}">Overview</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link {% if view == 'calendar' %}active{% endif %}" href="{{ url_for('trainer.client_detail', member_id=client.id, view='calendar') }}">Calendar</a>
+      </li>
+    </ul>
+
+    {% if view == 'calendar' %}
+      <div class="card">
+        <div class="card-body">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            {% set prev_month = cal_month - 1 %}
+            {% set prev_year = cal_year %}
+            {% if prev_month < 1 %}{% set prev_month = 12 %}{% set prev_year = cal_year - 1 %}{% endif %}
+            {% set next_month = cal_month + 1 %}
+            {% set next_year = cal_year %}
+            {% if next_month > 12 %}{% set next_month = 1 %}{% set next_year = cal_year + 1 %}{% endif %}
+            <div>
+              <a href="{{ url_for('trainer.client_detail', member_id=client.id, view='calendar', year=prev_year, month=prev_month) }}" class="btn btn-sm btn-outline-primary">&lt;</a>
+              <a href="{{ url_for('trainer.client_detail', member_id=client.id, view='calendar', year=next_year, month=next_month) }}" class="btn btn-sm btn-outline-primary ms-1">&gt;</a>
+            </div>
+            <h5 class="mb-0">{{ cal_year }} — {{ "%02d"|format(cal_month) }}</h5>
+            <div></div>
+          </div>
+
+          <div class="container-fluid">
+            <div class="row row-cols-7 text-center fw-bold border-bottom pb-2">
+              <div class="col">Sun</div><div class="col">Mon</div><div class="col">Tue</div>
+              <div class="col">Wed</div><div class="col">Thu</div><div class="col">Fri</div><div class="col">Sat</div>
+            </div>
+
+            {% for week in calendar_weeks %}
+              <div class="row row-cols-7 g-2 mt-2">
+                {% for day in week %}
+                  <div class="col">
+                    {% if day.day %}
+                      <a href="{{ url_for('trainer.client_detail', member_id=client.id, view='calendar', year=cal_year, month=cal_month, day=day.iso) }}" class="text-decoration-none text-reset">
+                        <div class="p-2 h-100 border calendar-day {% if not day.in_month %}text-muted bg-light{% endif %}">
+                          <div class="d-flex justify-content-between align-items-start mb-1">
+                            <small class="text-muted">{{ day.day }}</small>
+                            <div>
+                              {% if day.data and day.data.weight is not none %}<span class="badge bg-info text-dark me-1">W</span>{% endif %}
+                              {% if day.data and day.data.workouts %}<span class="badge bg-success">F</span>{% endif %}
+                            </div>
+                          </div>
+                          <div class="small" style="line-height:1.1;">
+                            <div><strong>Weight:</strong> {{ day.data.weight | round(1) if day.data and day.data.weight is not none else '—' }}</div>
+                            {% if day.data and day.data.workouts %}
+                              <div><strong>Workouts:</strong> {{ day.data.workouts | length }}</div>
+                            {% endif %}
+                          </div>
+                        </div>
+                      </a>
+                    {% else %}
+                      <div class="p-2 h-100 border bg-light calendar-day"></div>
+                    {% endif %}
+                  </div>
+                {% endfor %}
+              </div>
+            {% endfor %}
+          </div>
+
+          <div class="mt-3 border rounded p-3 bg-light">
+            <div class="small text-muted mb-2">Selected: {{ (selected_date.strftime('%A, %B %d, %Y') if selected_date else '') }}</div>
+            <div><strong>Weight:</strong> {{ selected_weight | round(1) if selected_weight is not none else '—' }}</div>
+            <div class="mt-2"><strong>Workouts:</strong>
+              {% if selected_workouts %}
+                <ul class="list-unstyled small mb-0 mt-2">
+                  {% for workout in selected_workouts %}
+                    <li class="mb-1">
+                      <strong>{{ workout.time or '—' }}</strong>
+                      {% if workout.session and workout.session.template %}
+                        — {{ workout.session.template.name }}
+                      {% endif %}
+                      {% if workout.summary %}
+                        : {{ workout.summary }}
+                      {% endif %}
+                      <a class="ms-1" href="{{ url_for('template.view_session', session_id=workout.session.id) }}">View</a>
+                    </li>
+                  {% endfor %}
+                </ul>
+              {% else %}
+                <span class="small text-muted">No workouts logged</span>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+    {% else %}
+      <div class="row g-3">
+        <div class="col-lg-6">
+          <div class="card h-100">
+            <div class="card-body">
+              <h5 class="card-title">Profile Information</h5>
+              <div class="row">
+                <div class="col-sm-6">
+                  <div class="text-muted small">Email</div>
+                  <div>{{ client.email }}</div>
+                </div>
+                <div class="col-sm-3">
+                  <div class="text-muted small">Age</div>
+                  <div>{{ client.age if client.age is not none else '—' }}</div>
+                </div>
+                <div class="col-sm-3">
+                  <div class="text-muted small">Gender</div>
+                  <div>{{ client.gender or '—' }}</div>
+                </div>
+              </div>
+              <div class="row mt-3">
+                <div class="col-sm-4">
+                  <div class="text-muted small">Height</div>
+                  <div>
+                    {% if height_feet is not none %}
+                      {{ height_feet }} ft {{ height_inches or 0 }} in
+                    {% elif client.height_cm %}
+                      {{ client.height_cm | round(1) }} cm
+                    {% else %}
+                      —
+                    {% endif %}
+                  </div>
+                </div>
+                <div class="col-sm-4">
+                  <div class="text-muted small">Latest Weight</div>
+                  <div>{{ latest_weight | round(1) if latest_weight is not none else '—' }} lbs</div>
+                </div>
+                <div class="col-sm-4">
+                  <div class="text-muted small">Weekly Change</div>
+                  <div>{{ client.weekly_weight_change_lbs | round(2) if client.weekly_weight_change_lbs is not none else '—' }} lbs</div>
+                </div>
+              </div>
+              <div class="row mt-3">
+                <div class="col-sm-6">
+                  <div class="text-muted small">Maintenance Calories</div>
+                  <div>{{ client.maintenance_calories | round(1) if client.maintenance_calories is not none else '—' }}</div>
+                </div>
+                <div class="col-sm-6">
+                  <div class="text-muted small">Calorie Goal</div>
+                  <div>{{ client.calorie_goal | round(1) if client.calorie_goal is not none else '—' }}</div>
+                </div>
+              </div>
+              <div class="row mt-3">
+                <div class="col-sm-6">
+                  <div class="text-muted small">Custom Calorie Target</div>
+                  <div>{{ macro_targets.calories | round(1) if macro_targets and macro_targets.calories is not none else '—' }}</div>
+                </div>
+                <div class="col-sm-6">
+                  <div class="text-muted small">Custom Protein Target</div>
+                  <div>{{ macro_targets.protein | round(1) if macro_targets and macro_targets.protein is not none else '—' }} g</div>
+                </div>
+              </div>
+              <div class="row mt-2">
+                <div class="col-sm-6">
+                  <div class="text-muted small">Custom Carb Target</div>
+                  <div>{{ macro_targets.carbs | round(1) if macro_targets and macro_targets.carbs is not none else '—' }} g</div>
+                </div>
+                <div class="col-sm-6">
+                  <div class="text-muted small">Custom Fat Target</div>
+                  <div>{{ macro_targets.fats | round(1) if macro_targets and macro_targets.fats is not none else '—' }} g</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-6">
+          <div class="card h-100">
+            <div class="card-body">
+              <h5 class="card-title">Update Calorie Targets</h5>
+              <form method="POST">
+                <input type="hidden" name="redirect_view" value="{{ view }}" />
+                <div class="row g-3">
+                  <div class="col-md-6">
+                    <label class="form-label">Maintenance Calories</label>
+                    <input type="number" step="0.1" name="maintenance_calories" class="form-control" value="{{ client.maintenance_calories | round(1) if client.maintenance_calories is not none else '' }}" placeholder="e.g. 2200" />
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label">Calorie Goal</label>
+                    <input type="number" step="0.1" name="calorie_goal" class="form-control" value="{{ client.calorie_goal | round(1) if client.calorie_goal is not none else '' }}" placeholder="e.g. 1800" />
+                  </div>
+                </div>
+                <button type="submit" class="btn btn-primary mt-3">Save Targets</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row mt-4 g-3">
+        <div class="col-lg-6">
+          <div class="card h-100">
+            <div class="card-body">
+              <h5 class="card-title">Set Custom Macros</h5>
+              <form method="POST">
+                <input type="hidden" name="action" value="update_macros" />
+                <input type="hidden" name="redirect_view" value="{{ view }}" />
+                <div class="row g-3">
+                  <div class="col-md-6">
+                    <label class="form-label">Calories</label>
+                    <input type="number" step="0.1" name="custom_calorie_target" class="form-control" value="{{ client.custom_calorie_target | round(1) if client.custom_calorie_target is not none else '' }}" placeholder="e.g. 2000" />
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label">Protein (g)</label>
+                    <input type="number" step="0.1" name="custom_protein_target" class="form-control" value="{{ client.custom_protein_target_g | round(1) if client.custom_protein_target_g is not none else '' }}" placeholder="e.g. 160" />
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label">Carbs (g)</label>
+                    <input type="number" step="0.1" name="custom_carb_target" class="form-control" value="{{ client.custom_carb_target_g | round(1) if client.custom_carb_target_g is not none else '' }}" placeholder="e.g. 220" />
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label">Fat (g)</label>
+                    <input type="number" step="0.1" name="custom_fat_target" class="form-control" value="{{ client.custom_fat_target_g | round(1) if client.custom_fat_target_g is not none else '' }}" placeholder="e.g. 60" />
+                  </div>
+                </div>
+                <button type="submit" class="btn btn-primary mt-3">Save Custom Macros</button>
+                <p class="text-muted small mt-2 mb-0">Leave any field blank to clear that target.</p>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mt-4">
+        <div class="card-body">
+          <h5 class="card-title">Assigned Templates</h5>
+          {% if assigned_templates %}
+            <div class="list-group list-group-flush">
+              {% for assignment in assigned_templates %}
+                <div class="list-group-item d-flex justify-content-between align-items-center">
+                  <div>
+                    <div class="fw-semibold">{{ assignment.template.name }}</div>
+                    <div class="text-muted small">{{ assignment.template.description or 'No description provided.' }}</div>
+                  </div>
+                  <div class="btn-group">
+                    <a href="{{ url_for('template.view_template', template_id=assignment.template_id) }}" class="btn btn-outline-secondary btn-sm">View</a>
+                    <a href="{{ url_for('template.start_workout', template_id=assignment.template_id, for_user_id=client.id) }}" class="btn btn-sm btn-success">Log Workout</a>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="text-muted mb-0">No templates assigned yet.</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card mt-4">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="card-title mb-0">Custom Meal Plan</h5>
+            <a href="{{ url_for('trainer.create_meal', member_id=client.id) }}" class="btn btn-sm btn-primary">Add Meal</a>
+          </div>
+          <ul class="nav nav-pills" id="mealPlanTabs" role="tablist">
+            {% for slot, label in meal_slot_labels.items() %}
+              <li class="nav-item" role="presentation">
+                <button class="nav-link {% if loop.first %}active{% endif %}" id="tab-{{ slot }}" data-bs-toggle="pill" data-bs-target="#panel-{{ slot }}" type="button" role="tab" aria-controls="panel-{{ slot }}" aria-selected="{{ 'true' if loop.first else 'false' }}">{{ label }}</button>
+              </li>
+            {% endfor %}
+          </ul>
+          <div class="tab-content mt-3" id="mealPlanContent">
+            {% for slot, label in meal_slot_labels.items() %}
+              <div class="tab-pane fade {% if loop.first %}show active{% endif %}" id="panel-{{ slot }}" role="tabpanel" aria-labelledby="tab-{{ slot }}">
+                {% set slot_meals = meals_by_slot.get(slot) %}
+                {% if slot_meals %}
+                  {% for meal in slot_meals %}
+                    <div class="border rounded-3 p-3 mb-3">
+                      <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                          <h6 class="mb-1">
+                            {{ meal.name }}
+                            {% if not meal.member_id %}
+                              <span class="badge bg-secondary ms-1">All clients</span>
+                            {% endif %}
+                          </h6>
+                          {% if meal.description %}
+                            <p class="mb-2 text-muted small">{{ meal.description }}</p>
+                          {% endif %}
+                          <p class="mb-2 small text-secondary">
+                            {{ meal.macros.calories }} cal · {{ meal.macros.protein }}g protein · {{ meal.macros.carbs }}g carbs · {{ meal.macros.fats }}g fat
+                          </p>
+                        </div>
+                        <div class="btn-group btn-group-sm">
+                          <a href="{{ url_for('trainer.edit_meal', member_id=client.id, meal_id=meal.id) }}" class="btn btn-outline-secondary">Edit</a>
+                          <form method="POST" action="{{ url_for('trainer.delete_meal', member_id=client.id, meal_id=meal.id) }}" onsubmit="return confirm('Delete this meal?');">
+                            <button type="submit" class="btn btn-outline-danger">Delete</button>
+                          </form>
+                        </div>
+                      </div>
+                      <ul class="mb-0 small mt-2">
+                        {% for ingredient in meal.ingredients %}
+                          <li>
+                            <strong>{{ ingredient.name }}</strong>
+                            — {{ ingredient.grams }} g{% if ingredient.ounces %} / {{ ingredient.ounces }} oz{% endif %}
+                            {% if ingredient.volume_ml %}
+                              ({{ ingredient.volume_ml }} ml{% if ingredient.fluid_oz %} / {{ ingredient.fluid_oz }} fl oz{% endif %})
+                            {% endif %}
+                          </li>
+                        {% endfor %}
+                      </ul>
+                    </div>
+                  {% endfor %}
+                {% else %}
+                  <p class="text-muted small mb-0">No meals assigned to {{ label.lower() }} yet.</p>
+                {% endif %}
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+      <div class="row mt-4 g-3">
+        <div class="col-lg-6">
+          <div class="card h-100">
+            <div class="card-body">
+              <h5 class="card-title">Recent Workouts</h5>
+              {% if recent_sessions %}
+                <ul class="list-group list-group-flush">
+                  {% for session in recent_sessions %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                      <div>
+                        <div class="fw-semibold">{{ (session.completed_at or session.started_at).strftime('%Y-%m-%d %H:%M') if session.started_at else '—' }}</div>
+                        <div class="text-muted small">{{ session.summary or 'No summary' }}</div>
+                      </div>
+                      <a href="{{ url_for('template.view_session', session_id=session.id) }}" class="btn btn-sm btn-outline-primary">View</a>
+                    </li>
+                  {% endfor %}
+                </ul>
+              {% else %}
+                <p class="text-muted mb-0">No workouts logged yet.</p>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-6">
+          <div class="card h-100">
+            <div class="card-body">
+              <h5 class="card-title">Recent Weights</h5>
+              {% if recent_weights %}
+                <table class="table table-sm mb-0">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th class="text-end">Weight (lbs)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for entry in recent_weights %}
+                      <tr>
+                        <td>{{ entry.date.strftime('%Y-%m-%d') if entry.date else '—' }}</td>
+                        <td class="text-end">{{ entry.weight | round(1) if entry.weight is not none else '—' }}</td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              {% else %}
+                <p class="text-muted mb-0">No weight history recorded.</p>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  {% set trainer_clients_active = request.endpoint in ['trainer.dashboard_trainer', 'trainer.client_detail'] %}
+  {% set templates_active = request.endpoint in ['template.list_templates', 'template.view_template', 'template.start_workout', 'template.view_session'] %}
+
+  <nav class="bottom-nav shadow-sm">
+    <div class="container px-0">
+      <div class="d-flex justify-content-around align-items-center">
+        <a href="{{ url_for('trainer.dashboard_trainer') }}" class="nav-link {% if trainer_clients_active %}active{% endif %}">
+          <i class="bi bi-people"></i>
+          <span>Clients</span>
+        </a>
+        <a href="{{ url_for('template.list_templates') }}" class="nav-link {% if templates_active %}active{% endif %}">
+          <i class="bi bi-collection"></i>
+          <span>Templates</span>
+        </a>
+        <a href="{{ url_for('auth.logout') }}" class="nav-link">
+          <i class="bi bi-box-arrow-right"></i>
+          <span>Logout</span>
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

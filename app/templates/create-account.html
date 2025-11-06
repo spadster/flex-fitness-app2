@@ -18,6 +18,16 @@
   <div class="container d-flex flex-column justify-content-center align-items-center" style="min-height: 90vh;">
     <div class="card shadow-sm w-100" style="max-width: 500px;">
       <div class="card-body">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, msg in messages %}
+              <div class="alert alert-{{ category if category else 'info' }} alert-dismissible fade show" role="alert">
+                {{ msg }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+              </div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
         <h3 class="card-title text-center mb-4">Create Your Account</h3>
 
         <form method="POST" action="{{ url_for('auth.register') }}" id="createAccountForm">
@@ -36,6 +46,10 @@
           <div class="mb-3">
             <label for="signupPassword" class="form-label">Password</label>
             <input type="password" class="form-control" id="signupPassword" name="password" required>
+          </div>
+          <div class="mb-3">
+            <label for="confirmPassword" class="form-label">Confirm Password</label>
+            <input type="password" class="form-control" id="confirmPassword" name="confirm_password" required>
           </div>
           <div class="mb-3">
             <label for="role" class="form-label">I am a...</label>
