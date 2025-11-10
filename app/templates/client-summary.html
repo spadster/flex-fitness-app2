@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>{{ client.first_name }}'s Summary</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- Bootstrap -->
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+  >
+
+  <!-- Plotly -->
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+
+  <style>
+    body {
+      background-color: #f8f9fa;
+      font-family: 'Inter', sans-serif;
+    }
+    .section-card {
+      background: #ffffff;
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+    }
+    .back-btn {
+      position: absolute;
+      top: 20px;
+      right: 40px;
+    }
+    h2 {
+      font-weight: 600;
+    }
+    h4 {
+      font-weight: 500;
+    }
+    .stat-label {
+      color: #6c757d;
+      font-size: 0.9rem;
+    }
+    .stat {
+      font-weight: 600;
+      font-size: 1rem;
+    }
+  </style>
+</head>
+
+<body class="p-4">
+  <div class="container position-relative">
+    <!-- Back button -->
+    <a href="{{ url_for('trainer.dashboard_trainer') }}" class="btn btn-outline-secondary back-btn">
+      ← Back to Dashboard
+    </a>
+
+    <!-- Title -->
+    <h2 class="mb-4 text-center">{{ client.first_name }}'s Summary</h2>
+
+    <!-- Weight Progress -->
+    <div class="section-card">
+      <h4 class="mb-3">Weight Progress</h4>
+      {% if weekly_chart or monthly_chart %}
+        {% if weekly_chart %}
+          <div class="mb-4">
+            {{ weekly_chart | safe }}
+          </div>
+        {% endif %}
+        {% if monthly_chart %}
+          <div class="mb-4">
+            {{ monthly_chart | safe }}
+          </div>
+        {% endif %}
+      {% else %}
+        <p class="text-muted text-center">No weight data available.</p>
+      {% endif %}
+    </div>
+
+    <!-- Weekly Nutrition + Workouts -->
+    <div class="section-card">
+      <h4 class="mb-3">Weekly Summary</h4>
+      {% if weekly_summary_chart %}
+        {{ weekly_summary_chart | safe }}
+        <div class="row text-center mt-4">
+          <div class="col-md-6">
+            <h6>Nutrition (Avg / Day)</h6>
+            <p class="stat">
+              {{ weekly_nutrition.calories }} kcal<br>
+              P: {{ weekly_nutrition.protein }}g |
+              C: {{ weekly_nutrition.carbs }}g |
+              F: {{ weekly_nutrition.fats }}g
+            </p>
+          </div>
+          <div class="col-md-6">
+            <h6>Workouts</h6>
+            <p class="stat">
+              {{ weekly_workouts.workouts }} sessions<br>
+              {{ weekly_workouts.sets }} sets, {{ weekly_workouts.reps }} reps<br>
+              Volume: {{ weekly_workouts.volume }} kg
+            </p>
+          </div>
+        </div>
+      {% else %}
+        <p class="text-muted text-center">No weekly nutrition or workout data available.</p>
+      {% endif %}
+    </div>
+
+    <!-- Monthly Nutrition + Workouts -->
+    <div class="section-card">
+      <h4 class="mb-3">Monthly Summary</h4>
+      {% if monthly_summary_chart %}
+        {{ monthly_summary_chart | safe }}
+        <div class="row text-center mt-4">
+          <div class="col-md-6">
+            <h6>Nutrition (Avg / Day)</h6>
+            <p class="stat">
+              {{ monthly_nutrition.calories }} kcal<br>
+              P: {{ monthly_nutrition.protein }}g |
+              C: {{ monthly_nutrition.carbs }}g |
+              F: {{ monthly_nutrition.fats }}g
+            </p>
+          </div>
+          <div class="col-md-6">
+            <h6>Workouts</h6>
+            <p class="stat">
+              {{ monthly_workouts.workouts }} sessions<br>
+              {{ monthly_workouts.sets }} sets, {{ monthly_workouts.reps }} reps<br>
+              Volume: {{ monthly_workouts.volume }} kg
+            </p>
+          </div>
+        </div>
+      {% else %}
+        <p class="text-muted text-center">No monthly nutrition or workout data available.</p>
+      {% endif %}
+    </div>
+  </div>
+</body>
+</html>

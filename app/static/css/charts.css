@@ -1,0 +1,100 @@
+/* ========== Chart.css ========== */
+/* General Page Styling */
+body {
+  background-color: #f4f6f8;
+  color: #333;
+  font-family: "Inter", "Segoe UI", Arial, sans-serif;
+}
+
+/* Section Cards */
+.section-card {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+  padding: 24px 28px;
+  margin-bottom: 30px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.section-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+}
+
+/* Section Titles */
+.section-card h4 {
+  font-weight: 600;
+  margin-bottom: 20px;
+  color: #1a1a1a;
+}
+
+/* Chart Containers */
+.chart-container {
+  position: relative;
+  height: 400px;
+  width: 100%;
+}
+
+/* Text and Stats Formatting */
+.row.text-center h6 {
+  color: #007bff;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 0.9rem;
+}
+
+.row.text-center p {
+  font-size: 1rem;
+  color: #444;
+  margin-top: 6px;
+}
+
+/* Buttons */
+.btn {
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+.btn-secondary {
+  background-color: #6c757d;
+  border: none;
+}
+
+.btn-secondary:hover {
+  background-color: #5a6268;
+}
+
+/* Page Header */
+h2 {
+  font-weight: 700;
+  color: #222;
+}
+
+/* Chart.js Overrides */
+canvas {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Responsive Layout */
+@media (max-width: 768px) {
+  .section-card {
+    padding: 16px 18px;
+  }
+
+  .chart-container {
+    height: 300px;
+  }
+
+  h2 {
+    font-size: 1.6rem;
+  }
+}
+
+/* Flash Message Styling (if you ever include flashes) */
+.alert {
+  border-radius: 8px;
+  font-size: 0.95rem;
+  padding: 10px 16px;
+}

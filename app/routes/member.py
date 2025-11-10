@@ -19,9 +19,12 @@ from app.services.nutrition import (
     serialize_meal,
     MEAL_SLOT_LABELS,
 )
-from sqlalchemy import or_, and_
-from datetime import datetime, date
+from sqlalchemy import or_, and_, func
+from flask_login import current_user, login_required
+from datetime import datetime, date, timedelta
 import calendar as _calendar
+import pandas as pd
+import plotly.graph_objs as go
 
 member_bp = Blueprint('member', __name__, url_prefix='/member')
 
@@ -1252,6 +1255,150 @@ def delete_food_log(log_id):
 
     return jsonify({"status": "success", "message": f"Removed {food_name} from your log."})
 
+#-----------------------------
+# Member Summary Page (Weekly and Monthly)
+#-----------------------------
+@member_bp.route('/summary')
+@login_required
+def member_summary():
+    """Show client's personal summary with interactive charts and numeric breakdowns."""
+    if current_user.role != 'member':
+        flash("Access denied.", "danger")
+        return redirect(url_for('member.dashboard'))
+
+    client = current_user
+    now = datetime.utcnow()
+    week_ago = now - timedelta(days=7)
+    month_ago = now - timedelta(days=30)
+
+    # ----- WEIGHT DATA -----
+    weights = (
+        db.session.query(Progress.date, Progress.weight)
+        .filter(Progress.user_id == client.id)
+        .order_by(Progress.date)
+        .all()
+    )
+    df_weights = pd.DataFrame(weights, columns=["date", "weight"]) if weights else pd.DataFrame()
+
+    # ----- AGGREGATION HELPERS -----
+    def get_nutrition(start_date, days):
+        q = (
+            db.session.query(
+                func.sum(Food.calories * UserFoodLog.quantity).label("calories"),
+                func.sum(Food.protein_g * UserFoodLog.quantity).label("protein"),
+                func.sum(Food.carbs_g * UserFoodLog.quantity).label("carbs"),
+                func.sum(Food.fats_g * UserFoodLog.quantity).label("fats"),
+            )
+            .select_from(UserFoodLog)
+            .join(Food, Food.id == UserFoodLog.food_id)
+            .filter(UserFoodLog.user_id == client.id)
+            .filter(UserFoodLog.log_date >= start_date)
+        ).first()
+        return {
+            "calories": round((q.calories or 0) / days, 1),
+            "protein": round((q.protein or 0) / days, 1),
+            "carbs": round((q.carbs or 0) / days, 1),
+            "fats": round((q.fats or 0) / days, 1),
+        }
+
+    def get_workouts(start_date):
+        q = (
+            db.session.query(
+                func.count(func.distinct(WorkoutSession.id)).label("workouts"),
+                func.count(WorkoutSet.id).label("sets"),
+                func.sum(WorkoutSet.reps).label("reps"),
+                func.sum(WorkoutSet.reps * WorkoutSet.weight).label("volume"),
+            )
+            .select_from(WorkoutSession)
+            .join(WorkoutSet, WorkoutSet.session_id == WorkoutSession.id)
+            .filter(WorkoutSession.user_id == client.id)
+            .filter(WorkoutSession.started_at >= start_date)
+        ).first()
+        return {
+            "workouts": int(q.workouts or 0),
+            "sets": int(q.sets or 0),
+            "reps": int(q.reps or 0),
+            "volume": int(q.volume or 0),
+        }
+
+    # ----- AGGREGATED DATA -----
+    weekly_nutrition = get_nutrition(week_ago, 7)
+    monthly_nutrition = get_nutrition(month_ago, 30)
+    weekly_workouts = get_workouts(week_ago)
+    monthly_workouts = get_workouts(month_ago)
+
+    # ----- CHARTS -----
+    # 1️⃣ Weight line chart
+    weight_chart = None
+    if not df_weights.empty:
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=df_weights["date"],
+            y=df_weights["weight"],
+            mode="lines+markers",
+            line=dict(color="#007bff", width=3),
+            marker=dict(size=7)
+        ))
+        fig.update_layout(
+            title="Your Weight Progress",
+            xaxis_title="Date",
+            yaxis_title="Weight (kg)",
+            template="plotly_white",
+            margin=dict(l=40, r=40, t=60, b=40)
+        )
+        weight_chart = fig.to_html(full_html=False)
+
+    # 2️⃣ Weekly Bar chart
+    weekly_categories = ["Calories", "Protein", "Carbs", "Fats", "Workouts", "Sets", "Reps", "Volume"]
+    weekly_values = [
+        weekly_nutrition["calories"], weekly_nutrition["protein"],
+        weekly_nutrition["carbs"], weekly_nutrition["fats"],
+        weekly_workouts["workouts"], weekly_workouts["sets"],
+        weekly_workouts["reps"], weekly_workouts["volume"]
+    ]
+    colors = ["#36a2eb"] * 4 + ["#ff9800"] * 4
+
+    fig_weekly = go.Figure([go.Bar(x=weekly_categories, y=weekly_values, marker_color=colors)])
+    fig_weekly.update_layout(
+        title="Your Weekly Summary: Nutrition & Workouts",
+        xaxis_title="Metrics",
+        yaxis_title="Values",
+        template="plotly_white",
+        margin=dict(l=40, r=40, t=60, b=40)
+    )
+    weekly_chart = fig_weekly.to_html(full_html=False)
+
+    # 3️⃣ Monthly Bar chart
+    monthly_categories = ["Calories", "Protein", "Carbs", "Fats", "Workouts", "Sets", "Reps", "Volume"]
+    monthly_values = [
+        monthly_nutrition["calories"], monthly_nutrition["protein"],
+        monthly_nutrition["carbs"], monthly_nutrition["fats"],
+        monthly_workouts["workouts"], monthly_workouts["sets"],
+        monthly_workouts["reps"], monthly_workouts["volume"]
+    ]
+
+    fig_monthly = go.Figure([go.Bar(x=monthly_categories, y=monthly_values, marker_color=colors)])
+    fig_monthly.update_layout(
+        title="Your Monthly Summary: Nutrition & Workouts",
+        xaxis_title="Metrics",
+        yaxis_title="Values",
+        template="plotly_white",
+        margin=dict(l=40, r=40, t=60, b=40)
+    )
+    monthly_chart = fig_monthly.to_html(full_html=False)
+
+    # ----- RENDER -----
+    return render_template(
+        "member-summary.html",
+        client=client,
+        weight_chart=weight_chart,
+        weekly_chart=weekly_chart,
+        monthly_chart=monthly_chart,
+        weekly_nutrition=weekly_nutrition,
+        monthly_nutrition=monthly_nutrition,
+        weekly_workouts=weekly_workouts,
+        monthly_workouts=monthly_workouts,
+    )
 
 # -----------------------------
 # Log out

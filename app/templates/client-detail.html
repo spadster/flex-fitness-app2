@@ -249,39 +249,53 @@
         </div>
       </div>
 
-      <div class="row mt-4 g-3">
-        <div class="col-lg-6">
-          <div class="card h-100">
-            <div class="card-body">
-              <h5 class="card-title">Set Custom Macros</h5>
-              <form method="POST">
-                <input type="hidden" name="action" value="update_macros" />
-                <input type="hidden" name="redirect_view" value="{{ view }}" />
-                <div class="row g-3">
-                  <div class="col-md-6">
-                    <label class="form-label">Calories</label>
-                    <input type="number" step="0.1" name="custom_calorie_target" class="form-control" value="{{ client.custom_calorie_target | round(1) if client.custom_calorie_target is not none else '' }}" placeholder="e.g. 2000" />
-                  </div>
-                  <div class="col-md-6">
-                    <label class="form-label">Protein (g)</label>
-                    <input type="number" step="0.1" name="custom_protein_target" class="form-control" value="{{ client.custom_protein_target_g | round(1) if client.custom_protein_target_g is not none else '' }}" placeholder="e.g. 160" />
-                  </div>
-                  <div class="col-md-6">
-                    <label class="form-label">Carbs (g)</label>
-                    <input type="number" step="0.1" name="custom_carb_target" class="form-control" value="{{ client.custom_carb_target_g | round(1) if client.custom_carb_target_g is not none else '' }}" placeholder="e.g. 220" />
-                  </div>
-                  <div class="col-md-6">
-                    <label class="form-label">Fat (g)</label>
-                    <input type="number" step="0.1" name="custom_fat_target" class="form-control" value="{{ client.custom_fat_target_g | round(1) if client.custom_fat_target_g is not none else '' }}" placeholder="e.g. 60" />
-                  </div>
-                </div>
-                <button type="submit" class="btn btn-primary mt-3">Save Custom Macros</button>
-                <p class="text-muted small mt-2 mb-0">Leave any field blank to clear that target.</p>
-              </form>
+<div class="row mt-4 g-3">
+  <!-- Set Custom Macros card -->
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <h5 class="card-title">Set Custom Macros</h5>
+        <form method="POST">
+          <input type="hidden" name="action" value="update_macros" />
+          <input type="hidden" name="redirect_view" value="{{ view }}" />
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Calories</label>
+              <input type="number" step="0.1" name="custom_calorie_target" class="form-control" value="{{ client.custom_calorie_target | round(1) if client.custom_calorie_target is not none else '' }}" placeholder="e.g. 2000" />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Protein (g)</label>
+              <input type="number" step="0.1" name="custom_protein_target" class="form-control" value="{{ client.custom_protein_target_g | round(1) if client.custom_protein_target_g is not none else '' }}" placeholder="e.g. 160" />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Carbs (g)</label>
+              <input type="number" step="0.1" name="custom_carb_target" class="form-control" value="{{ client.custom_carb_target_g | round(1) if client.custom_carb_target_g is not none else '' }}" placeholder="e.g. 220" />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Fat (g)</label>
+              <input type="number" step="0.1" name="custom_fat_target" class="form-control" value="{{ client.custom_fat_target_g | round(1) if client.custom_fat_target_g is not none else '' }}" placeholder="e.g. 60" />
             </div>
           </div>
-        </div>
+          <button type="submit" class="btn btn-primary mt-3">Save Custom Macros</button>
+          <p class="text-muted small mt-2 mb-0">Leave any field blank to clear that target.</p>
+        </form>
       </div>
+    </div>
+  </div>
+
+  <!-- View Client's Summary card -->
+<div class="col-lg-6">
+  <div class="card h-100">
+    <div class="card-body d-flex flex-column justify-content-center align-items-center">
+      <h5 class="card-title text-center">Client Summary</h5>
+      <p class="text-muted text-center small">View weekly and monthly breakdown of weight, nutrition, and workouts.</p>
+      <a href="{{ url_for('trainer.client_summary_view', member_id=client.id) }}" class="btn btn-secondary mt-3">
+        View Client's Summary
+      </a>
+    </div>
+  </div>
+</div>
+
 
       <div class="card mt-4">
         <div class="card-body">
