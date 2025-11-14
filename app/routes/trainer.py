@@ -29,6 +29,7 @@ from app.services.nutrition import (
 )
 from app.routes.member import build_member_summary_context
 from sqlalchemy import or_, func
+import pytz
 
 trainer_bp = Blueprint('trainer', __name__, url_prefix='/trainer')
 
@@ -39,7 +40,8 @@ def dashboard_trainer():
         flash("Access denied.", "danger")
         return redirect(url_for('main.home'))
 
-    today = datetime.utcnow().date()
+    est = pytz.timezone("America/New_York")
+    today = datetime.now(est).date()
     members = (
         User.query
         .filter_by(trainer_id=current_user.id, role='member')
@@ -268,7 +270,8 @@ def client_detail(member_id):
             return redirect(url_for('trainer.client_detail', member_id=client.id, view=redirect_view))
         return redirect(url_for('trainer.client_detail', member_id=client.id))
 
-    today = datetime.utcnow().date()
+    est = pytz.timezone("America/New_York")
+    today = datetime.now(est).date()
     latest_progress = (
         Progress.query
         .filter_by(user_id=client.id)

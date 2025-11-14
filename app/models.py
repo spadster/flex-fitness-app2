@@ -2,6 +2,7 @@ from app import db, login_manager
 from datetime import datetime
 import string, random
 from flask_login import UserMixin
+import pytz
 
 class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
@@ -341,3 +342,7 @@ class Message(db.Model):
         foreign_keys=[client_id],
         backref=db.backref('received_messages', lazy='dynamic')
     )
+    @property
+    def local_timestamp(self):
+        est = pytz.timezone("America/New_York")
+        return self.timestamp.replace(tzinfo=pytz.utc).astimezone(est)

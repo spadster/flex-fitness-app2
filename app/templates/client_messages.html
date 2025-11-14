@@ -20,7 +20,7 @@
           <div>
             <p class="mb-1">{{ message.content }}</p>
             <small class="text-muted">
-              Sent {{ message.timestamp.strftime('%b %d, %Y %I:%M %p') if message.timestamp else 'just now' }}
+              Sent {{message.local_timestamp.strftime('%b %d, %Y %I:%M %p %Z') if message.local_timestamp else 'just now'}}
               {% if message.trainer %}
                 by {{ message.trainer.first_name }} {{ message.trainer.last_name }}
               {% endif %}
