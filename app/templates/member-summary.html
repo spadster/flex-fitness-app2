@@ -2,96 +2,390 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Your Progress Summary</title>
+  <title>My Stats</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
   <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
   <style>
-    body { background-color: #f8f9fa; font-family: 'Inter', sans-serif; }
-    .section-card { background: #fff; border-radius: 12px; padding: 1.5rem; margin-bottom: 2rem; box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
-    .stat { font-weight: 600; font-size: 1.1rem; }
-    .stat-label { color: #6c757d; font-size: 0.9rem; }
-    .back-btn { position: absolute; top: 20px; right: 40px; }
+    body.app-shell {
+      background: linear-gradient(135deg, #eaf0ff, #fdfdff);
+      font-family: 'Inter', sans-serif;
+    }
+    body.app-shell[data-theme="dark"] {
+      background: radial-gradient(circle at 25% 10%, #1e293b, #050b16);
+    }
+    .section-card {
+      background: linear-gradient(180deg, #ffffff 0%, #f7f9ff 100%);
+      border-radius: 18px;
+      padding: 1.75rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+    }
+    body[data-theme="dark"] .section-card {
+      background: linear-gradient(180deg, #1e293b 0%, #111827 100%);
+      box-shadow: 0 18px 35px rgba(2, 6, 23, 0.7);
+      color: #e2e8f0;
+    }
+    .section-card h4 {
+      font-weight: 600;
+    }
+    .stats-grid .section-card {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+    .section-card.card-blue { border-top: 4px solid #4c8bf5; }
+    .section-card.card-indigo { border-top: 4px solid #7f8bff; }
+    .section-card.card-slate { border-top: 4px solid #0a58ca; }
+    .section-card.card-mint { border-top: 4px solid #22c55e; }
+    .workout-history-item {
+      border: 1px solid #eef2ff;
+      border-radius: 14px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1rem;
+      background: #fdfdff;
+    }
+    body[data-theme="dark"] .workout-history-item {
+      border-color: rgba(148, 163, 184, 0.35);
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+    .workout-history-item:last-child {
+      margin-bottom: 0;
+    }
+    .history-label {
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      color: #94a3b8;
+      letter-spacing: 0.08em;
+    }
+    .exercise-row + .exercise-row {
+      margin-top: 0.9rem;
+      padding-top: 0.9rem;
+      border-top: 1px solid #eef2ff;
+    }
+    .workout-history-scroll {
+      max-height: 450px;
+      overflow-y: auto;
+      padding-right: 0.35rem;
+    }
+    .workout-history-scroll::-webkit-scrollbar {
+      width: 6px;
+    }
+    .workout-history-scroll::-webkit-scrollbar-thumb {
+      background: rgba(13,110,253,0.35);
+      border-radius: 6px;
+    }
+    .macro-week-row + .macro-week-row {
+      border-top: 1px solid rgba(15, 23, 42, 0.08);
+      margin-top: 1rem;
+      padding-top: 1rem;
+    }
+    .macro-summary-wheel {
+      width: 260px;
+      height: 260px;
+      margin: 0 auto;
+      position: relative;
+      border-radius: 50%;
+      filter: drop-shadow(0 12px 24px rgba(15, 23, 42, 0.15));
+    }
+    body[data-theme="dark"] .macro-summary-wheel {
+      filter: drop-shadow(0 16px 36px rgba(2, 6, 23, 0.9));
+    }
+    .macro-wheel-center {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      z-index: 2;
+      color: #0f172a;
+    }
+    .macro-wheel-center small {
+      font-size: 0.8rem;
+      color: #6c757d;
+    }
+    body[data-theme="dark"] .macro-wheel-center {
+      color: #e2e8f0;
+    }
+    body[data-theme="dark"] .macro-wheel-center small {
+      color: #cbd5f5;
+    }
+    .macro-legend {
+      list-style: none;
+      padding: 0;
+      margin: 1.25rem 0 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    .macro-legend li {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+      font-size: 0.95rem;
+    }
+    body[data-theme="dark"] .macro-legend li {
+      border-bottom-color: rgba(148, 163, 184, 0.35);
+    }
+    .macro-legend li:last-child { border-bottom: none; padding-bottom: 0; }
+    .macro-legend .legend-label {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .macro-legend .legend-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .macro-legend .legend-value {
+      text-align: right;
+      font-weight: 600;
+    }
+    .macro-legend .legend-value small {
+      display: block;
+      font-size: 0.8rem;
+      color: #94a3b8;
+      font-weight: 400;
+    }
   </style>
 </head>
 
-<body class="p-4">
-  <div class="container position-relative">
-    <a href="{{ url_for('member.dashboard') }}" class="btn btn-outline-secondary back-btn">
-      ← Back to Dashboard
-    </a>
-
-    <h2 class="mb-4 text-center">Your Progress Summary</h2>
-
-    <!-- Weight Progress -->
-    <div class="section-card">
-      <h4 class="mb-3">Weight Progress</h4>
-      {% if weight_chart %}
-        {{ weight_chart | safe }}
-      {% else %}
-        <p class="text-muted text-center">No weight data available.</p>
-      {% endif %}
-    </div>
-
-    <!-- Weekly Summary -->
-    <div class="section-card">
-      <h4 class="mb-3">Weekly Summary</h4>
-      {% if weekly_chart %}
-        {{ weekly_chart | safe }}
-      {% else %}
-        <p class="text-muted text-center">No weekly data available.</p>
-      {% endif %}
-
-      <div class="row text-center mt-4">
-        <div class="col-md-6">
-          <h6>Nutrition (Avg / Day)</h6>
-          <p class="stat">
-            {{ weekly_nutrition.calories }} kcal<br>
-            P: {{ weekly_nutrition.protein }}g |
-            C: {{ weekly_nutrition.carbs }}g |
-            F: {{ weekly_nutrition.fats }}g
-          </p>
-        </div>
-        <div class="col-md-6">
-          <h6>Workouts</h6>
-          <p class="stat">
-            {{ weekly_workouts.workouts }} sessions<br>
-            {{ weekly_workouts.sets }} sets, {{ weekly_workouts.reps }} reps<br>
-            Volume: {{ weekly_workouts.volume }} kg
-          </p>
-        </div>
+<body class="app-shell" data-theme="{{ theme_mode or 'light' }}">
+  {% set summary_role = summary_role | default('member') %}
+  {% set summary_nav = summary_nav | default('member') %}
+  {% set stats_heading = stats_heading | default('My Stats') %}
+  {% set macro_prev_url = macro_prev_url | default(None) %}
+  {% set macro_next_url = macro_next_url | default(None) %}
+  <header class="app-top-bar">
+    <div class="container d-flex align-items-center justify-content-between">
+      <a class="app-brand" href="{{ url_for('main.home') }}">Temp</a>
+      <div class="app-actions">
+        <button type="button" class="theme-toggle btn btn-sm btn-outline-light" aria-label="Toggle theme" aria-pressed="{{ 'true' if theme_mode == 'dark' else 'false' }}">
+          <span class="theme-toggle-label">{{ 'Light mode' if theme_mode == 'dark' else 'Dark mode' }}</span>
+        </button>
+        <span class="app-role-label">{{ summary_role|title }}</span>
+        <a href="{{ url_for('auth.logout') }}" class="app-logout-link">Log out</a>
       </div>
     </div>
+  </header>
 
-    <!-- Monthly Summary -->
-    <div class="section-card">
-      <h4 class="mb-3">Monthly Summary</h4>
-      {% if monthly_chart %}
-        {{ monthly_chart | safe }}
-      {% else %}
-        <p class="text-muted text-center">No monthly data available.</p>
-      {% endif %}
+  <div class="container py-4">
+    {% set active_tab = '' %}
+    <div class="mb-4">
+      <p class="text-muted mb-1">{{ stats_heading }}</p>
+      <h2 class="mb-0">Welcome back, {{ client.first_name }}!</h2>
+    </div>
 
-      <div class="row text-center mt-4">
-        <div class="col-md-6">
-          <h6>Nutrition (Avg / Day)</h6>
-          <p class="stat">
-            {{ monthly_nutrition.calories }} kcal<br>
-            P: {{ monthly_nutrition.protein }}g |
-            C: {{ monthly_nutrition.carbs }}g |
-            F: {{ monthly_nutrition.fats }}g
-          </p>
+    <div class="row g-4 stats-grid">
+      <div class="col-12 col-lg-6">
+        <div class="section-card h-100 card-blue">
+          <div class="d-flex flex-column mb-3">
+            <h4 class="mb-1">Weight trend</h4>
+            <p class="text-muted mb-0">All weights shown in pounds.</p>
+          </div>
+          {% if weight_span %}
+            <div class="row g-3 mb-3">
+              <div class="col-6">
+                <div class="history-label mb-1">Start</div>
+                <div class="fw-semibold">{{ weight_span.start_weight }} lbs</div>
+                <div class="text-muted small">{{ weight_span.start_date }}</div>
+              </div>
+              <div class="col-6">
+                <div class="history-label mb-1">End</div>
+                <div class="fw-semibold">{{ weight_span.end_weight }} lbs</div>
+                <div class="text-muted small">{{ weight_span.end_date }}</div>
+              </div>
+            </div>
+          {% endif %}
+          {% if weight_chart %}
+            {{ weight_chart | safe }}
+          {% else %}
+            <p class="text-muted mb-0 text-center mt-auto">No weight data logged yet.</p>
+          {% endif %}
         </div>
-        <div class="col-md-6">
-          <h6>Workouts</h6>
-          <p class="stat">
-            {{ monthly_workouts.workouts }} sessions<br>
-            {{ monthly_workouts.sets }} sets, {{ monthly_workouts.reps }} reps<br>
-            Volume: {{ monthly_workouts.volume }} kg
-          </p>
+      </div>
+      <div class="col-12 col-lg-6">
+        <div class="section-card h-100 card-mint">
+          <div class="d-flex flex-column mb-3">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <div class="d-flex align-items-center gap-2">
+                {% if macro_prev_url %}
+                  <a class="btn btn-outline-secondary btn-sm" href="{{ macro_prev_url }}">&larr;</a>
+                {% else %}
+                  <button class="btn btn-outline-secondary btn-sm" disabled>&larr;</button>
+                {% endif %}
+                <h4 class="mb-0">Weekly macro averages</h4>
+                {% if macro_next_url %}
+                  <a class="btn btn-outline-secondary btn-sm" href="{{ macro_next_url }}">&rarr;</a>
+                {% else %}
+                  <button class="btn btn-outline-secondary btn-sm" disabled>&rarr;</button>
+                {% endif %}
+              </div>
+              <span class="small text-muted">{{ macro_week_summary.label }}</span>
+            </div>
+          </div>
+          <div class="text-center">
+            <div class="macro-summary-wheel" style="background: conic-gradient({{ macro_wheel_gradient }});">
+              <div class="macro-wheel-center">
+                <div>{{ macro_week_summary.averages.calories }} kcal</div>
+                <small>avg / day &mdash; {{ macro_week_summary.days_elapsed }}d</small>
+              </div>
+            </div>
+          </div>
+
+          <ul class="macro-legend">
+            {% for segment in macro_wheel_segments %}
+              <li>
+                <div class="legend-label">
+                  <span class="legend-dot" style="background: {{ segment.color }}"></span>
+                  {{ segment.label }}
+                </div>
+                <div class="legend-value">
+                  {{ segment.value }} {{ segment.suffix }}
+                  <small>{{ segment.percent }}%</small>
+                </div>
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+
+    <div class="row g-4 stats-grid">
+      <div class="col-12 col-lg-6">
+        <div class="section-card h-100 card-indigo">
+          <div class="d-flex flex-column mb-3">
+            <h4 class="mb-1">Weekly workouts</h4>
+            <p class="text-muted mb-0">Week-starting totals for the last five weeks.</p>
+          </div>
+          {% if weekly_workout_chart %}
+            {{ weekly_workout_chart | safe }}
+          {% else %}
+            <p class="text-muted mb-0 text-center mt-auto">No workouts have been logged yet.</p>
+          {% endif %}
+        </div>
+      </div>
+      <div class="col-12 col-lg-6">
+        <div class="section-card h-100 card-slate">
+          <div class="d-flex flex-column mb-3">
+            <h4 class="mb-1">Workout history</h4>
+            <p class="text-muted mb-0">Most recent sessions appear first.</p>
+          </div>
+          {% if workout_history %}
+            <div class="workout-history-scroll">
+              <div class="workout-history-list">
+              {% for workout in workout_history %}
+                <div class="workout-history-item">
+                  <div class="d-flex flex-column flex-md-row justify-content-between gap-2">
+                    <div>
+                      <div class="fw-semibold">{{ workout.name }}</div>
+                      <div class="text-muted small">{{ workout.date }} {% if workout.duration %}&bull; {{ workout.duration }}{% endif %}</div>
+                    </div>
+                    <div class="text-md-end">
+                      <div class="history-label mb-1">Total Volume</div>
+                      <div class="fw-semibold">{{ workout.total_volume }} lbs</div>
+                    </div>
+                  </div>
+                  <div class="mt-3 small">
+                    {% if workout.exercises %}
+                      {% for exercise in workout.exercises %}
+                        <div class="exercise-row">
+                          <div class="d-flex flex-column flex-sm-row justify-content-between gap-3">
+                            <div>
+                              <div class="history-label mb-1">Exercise</div>
+                              <div class="fw-semibold">{{ exercise.sets }}x {{ exercise.name }}</div>
+                            </div>
+                            <div class="text-sm-end">
+                              <div class="history-label mb-1">Best Set</div>
+                              <div class="fw-semibold">
+                                {% if exercise.best_weight is not none %}
+                                  {{ exercise.best_weight }} lbs
+                                {% else %}
+                                  Bodyweight
+                                {% endif %}
+                                x {{ exercise.best_reps or 0 }}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      {% endfor %}
+                    {% else %}
+                      <p class="text-muted mb-0">No sets logged for this session.</p>
+                    {% endif %}
+                  </div>
+                </div>
+              {% endfor %}
+              </div>
+            </div>
+          {% else %}
+            <p class="text-muted mb-0 text-center mt-auto">Log your first workout to see a detailed history here.</p>
+          {% endif %}
         </div>
       </div>
     </div>
   </div>
+
+  {% if summary_nav == 'member' %}
+    {% set templates_active = request.endpoint in ['template.list_templates', 'template.view_template', 'template.start_workout', 'template.view_session'] %}
+    <nav class="bottom-nav shadow-sm">
+      <div class="container px-0">
+        <div class="d-flex justify-content-around align-items-center">
+          <a href="{{ url_for('member.dashboard') }}" class="nav-link {% if request.endpoint == 'member.dashboard' and request.args.get('view') not in ['profile', 'calendar'] %}active{% endif %}">
+            <i class="bi bi-speedometer2"></i>
+            <span>Dashboard</span>
+          </a>
+          <a href="{{ url_for('member.dashboard', view='profile') }}" class="nav-link {% if request.endpoint == 'member.dashboard' and request.args.get('view') == 'profile' %}active{% endif %}">
+            <i class="bi bi-person-circle"></i>
+            <span>Profile</span>
+          </a>
+          <a href="{{ url_for('member.member_summary') }}" class="nav-link {% if request.endpoint == 'member.member_summary' %}active{% endif %}">
+            <i class="bi bi-graph-up"></i>
+            <span>My Stats</span>
+          </a>
+          <a href="{{ url_for('template.list_templates') }}" class="nav-link {% if templates_active %}active{% endif %}">
+            <i class="bi bi-collection"></i>
+            <span>Templates</span>
+          </a>
+          <a href="{{ url_for('member.dashboard', view='calendar') }}" class="nav-link {% if request.endpoint == 'member.dashboard' and request.args.get('view') == 'calendar' %}active{% endif %}">
+            <i class="bi bi-calendar-event"></i>
+            <span>Calendar</span>
+          </a>
+        </div>
+      </div>
+    </nav>
+  {% else %}
+    {% set trainer_clients_active = request.endpoint in ['trainer.dashboard_trainer', 'trainer.client_detail', 'trainer.client_summary_view'] %}
+    {% set trainer_templates_active = request.endpoint in ['template.list_templates', 'template.view_template', 'template.start_workout', 'template.view_session'] %}
+    {% set trainer_meals_active = request.endpoint in ['trainer.create_meal', 'trainer.edit_meal'] %}
+    <nav class="bottom-nav shadow-sm">
+      <div class="container px-0">
+        <div class="d-flex justify-content-around align-items-center">
+          <a href="{{ url_for('trainer.dashboard_trainer') }}" class="nav-link {% if trainer_clients_active %}active{% endif %}">
+            <i class="bi bi-people"></i>
+            <span>Clients</span>
+          </a>
+          <a href="{{ url_for('template.list_templates') }}" class="nav-link {% if trainer_templates_active %}active{% endif %}">
+            <i class="bi bi-collection"></i>
+            <span>Templates</span>
+          </a>
+          <a href="{{ url_for('trainer.create_meal') }}" class="nav-link {% if trainer_meals_active %}active{% endif %}">
+            <i class="bi bi-egg-fried"></i>
+            <span>Meals</span>
+          </a>
+        </div>
+      </div>
+    </nav>
+  {% endif %}
+
+  <script src="{{ url_for('static', filename='js/theme-toggle.js') }}"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

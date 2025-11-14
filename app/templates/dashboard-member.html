@@ -8,6 +8,10 @@
       href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
       rel="stylesheet"
     />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/dashboard.css') }}"
+    />
     <style>
       #foodSuggestions {
         position: absolute;
@@ -44,53 +48,41 @@
       .progress-ring-circle {
         transition: stroke-dashoffset 0.35s;
       }
-      body {
-        padding-bottom: 80px;
+      .calendar-macro-wheel {
+        text-align: center;
       }
-
-      .bottom-nav {
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        background: #ffffff;
-        border-top: 1px solid rgba(0, 0, 0, 0.1);
-        z-index: 1050;
+      .calendar-macro-wheel .macro-wheel {
+        width: 108px;
+        height: 108px;
       }
-
-      .bottom-nav .nav-link {
-        color: #6c757d;
-        font-size: 0.85rem;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 0.25rem;
-        padding: 0.5rem 0;
+      .calendar-macro-wheel .macro-wheel-figure {
+        width: 108px;
+        height: 108px;
       }
-
-      .bottom-nav .nav-link .bi {
-        font-size: 1.25rem;
+      .calendar-macro-wheel .wheel-value {
+        font-size: 0.95rem;
       }
-
-      .bottom-nav .nav-link.active {
-        color: #0d6efd;
-        font-weight: 600;
+      .calendar-macro-wheel .wheel-value small {
+        display: block;
+        font-size: 0.65rem;
       }
     </style>
   </head>
-  <body class="bg-light">
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
-      <div class="container">
-        <a class="navbar-brand ms-auto fw" href="{{ url_for('main.home') }}"
-          >Temp</a
-        >
-        <a
-          href="{{ url_for('auth.logout') }}"
-          class="btn btn-outline-light ms-3"
-          >Log Out</a
-        >
+  <body class="app-shell" data-theme="{{ theme_mode or 'light' }}">
+    {% set _theme = theme_mode or 'light' %}
+    {% set wheel_base_color = '#cbd5f5' if _theme != 'dark' else '#475569' %}
+    <header class="app-top-bar">
+      <div class="container d-flex align-items-center justify-content-between">
+        <a class="app-brand" href="{{ url_for('main.home') }}">Temp</a>
+        <div class="app-actions">
+          <button type="button" class="theme-toggle btn btn-sm btn-outline-light" aria-label="Toggle theme" aria-pressed="{{ 'true' if theme_mode == 'dark' else 'false' }}">
+            <span class="theme-toggle-label">{{ 'Light mode' if theme_mode == 'dark' else 'Dark mode' }}</span>
+          </button>
+          <span class="app-role-label">Member</span>
+          <a href="{{ url_for('auth.logout') }}" class="app-logout-link">Log out</a>
+        </div>
       </div>
-    </nav>
+    </header>
 
     <div class="container mt-4 mb-5">
       {% set active_tab = 'dashboard' %}
@@ -100,7 +92,30 @@
         {% set active_tab = 'calendar' %}
       {% endif %}
 
-      <h1 class="mb-4">Welcome back, {{ user.first_name }}!</h1>
+      {% set is_default_tab = not view or view == 'dashboard' %}
+      <h1 class="mb-4 d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+        <span>Welcome back, {{ user.first_name }}!</span>
+        {% if has_any_messages and is_default_tab and not has_unread_messages %}
+          <a href="{{ url_for('member.view_messages') }}" class="btn btn-outline-primary btn-sm">
+            View Messages
+          </a>
+        {% endif %}
+      </h1>
+
+      {% if has_unread_messages %}
+      <div class="alert alert-info d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 shadow-sm">
+        <div class="d-flex align-items-center gap-3">
+          <span class="badge rounded-pill text-bg-light text-uppercase small text-primary px-3 py-2">New</span>
+          <div>
+            <strong>New trainer message</strong>
+            <div class="small mb-0">Open it to dismiss this reminder across your tabs.</div>
+          </div>
+        </div>
+        <a href="{{ url_for('member.view_messages') }}" class="btn btn-sm btn-primary">
+          View Messages
+        </a>
+      </div>
+      {% endif %}
 
       <div class="row">
         <div class="col-12">
@@ -191,18 +206,57 @@
             <div class="col-md-6">
               <div class="card mb-4 h-100">
                 <div class="card-body">
-                  <h5 class="card-title">Log Weight</h5>
-                  <form method="POST" action="{{ url_for('member.log_weight') }}">
-                    <div class="mb-3">
-                      <label class="form-label">Weight (lbs)</label>
-                      <input type="number" step="0.1" name="weight_lbs" class="form-control" min="0" value="{{ latest_weight_lbs | round(1) if latest_weight_lbs is not none else '' }}" required>
+                  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                    <h5 class="card-title mb-0">Weight</h5>
+                    <span class="text-muted small">Latest: {{ latest_weight_lbs | round(1) if latest_weight_lbs is not none else '—' }} lbs</span>
+                  </div>
+                  <ul class="nav nav-pills nav-fill small mb-3" id="weightTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                      <button class="nav-link active" id="weight-log-tab" data-bs-toggle="tab" data-bs-target="#weight-log-pane" type="button" role="tab" aria-controls="weight-log-pane" aria-selected="true">Log Weight</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                      <button class="nav-link" id="weight-history-tab" data-bs-toggle="tab" data-bs-target="#weight-history-pane" type="button" role="tab" aria-controls="weight-history-pane" aria-selected="false">Recent Entries</button>
+                    </li>
+                  </ul>
+                  <div class="tab-content" id="weightTabsContent">
+                    <div class="tab-pane fade show active" id="weight-log-pane" role="tabpanel" aria-labelledby="weight-log-tab">
+                      <form method="POST" action="{{ url_for('member.log_weight') }}">
+                        <div class="mb-3">
+                          <label class="form-label">Weight (lbs)</label>
+                          <input type="number" step="0.1" name="weight_lbs" class="form-control" min="0" value="{{ latest_weight_lbs | round(1) if latest_weight_lbs is not none else '' }}" required>
+                        </div>
+                        <div class="mb-3">
+                          <label class="form-label">Date</label>
+                          <input type="date" name="weight_date" class="form-control" value="{{ today.isoformat() }}">
+                        </div>
+                        <button type="submit" class="btn btn-success w-100">Log Weight</button>
+                      </form>
                     </div>
-                    <div class="mb-3">
-                      <label class="form-label">Date</label>
-                      <input type="date" name="weight_date" class="form-control" value="{{ today.isoformat() }}">
+                    <div class="tab-pane fade" id="weight-history-pane" role="tabpanel" aria-labelledby="weight-history-tab">
+                      {% if recent_weights %}
+                        <div class="table-responsive mt-3">
+                          <table class="table table-sm align-middle mb-0">
+                            <thead>
+                              <tr>
+                                <th>Date</th>
+                                <th class="text-end">Weight (lbs)</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {% for entry in recent_weights %}
+                                <tr>
+                                  <td>{{ entry.date.strftime('%Y-%m-%d') if entry.date else '' }}</td>
+                                  <td class="text-end">{{ entry.weight | round(1) if entry.weight is not none else '—' }}</td>
+                                </tr>
+                              {% endfor %}
+                            </tbody>
+                          </table>
+                        </div>
+                      {% else %}
+                        <p class="text-muted mb-0 mt-3">No weight entries logged yet.</p>
+                      {% endif %}
                     </div>
-                    <button type="submit" class="btn btn-success">Log Weight</button>
-                  </form>
+                  </div>
                 </div>
               </div>
             </div>
@@ -219,34 +273,6 @@
                   </form>
                 </div>
               </div>
-            </div>
-          </div>
-
-          <div class="card mb-4">
-            <div class="card-body">
-              <h5 class="card-title">Recent Weight Entries</h5>
-              {% if recent_weights %}
-              <div class="table-responsive">
-                <table class="table table-sm">
-                  <thead>
-                    <tr>
-                      <th>Date</th>
-                      <th class="text-end">Weight (lbs)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {% for entry in recent_weights %}
-                    <tr>
-                      <td>{{ entry.date.strftime('%Y-%m-%d') if entry.date else '' }}</td>
-                      <td class="text-end">{{ entry.weight | round(1) if entry.weight is not none else '—' }}</td>
-                    </tr>
-                    {% endfor %}
-                  </tbody>
-                </table>
-              </div>
-              {% else %}
-              <p class="text-muted mb-0">No weight entries logged yet.</p>
-              {% endif %}
             </div>
           </div>
 
@@ -310,27 +336,95 @@
               <!-- selected-day details -->
               <div class="text-center mt-3">
                 <div class="small text-muted">Selected: {{ (selected_date.strftime('%A, %B %d, %Y') if selected_date else '') }}</div>
-                <div class="mt-2 border rounded p-3 bg-light text-start">
-                  <div><strong>Weight:</strong> {{ (selected_weight | round(1)) if selected_weight is not none else 'No entry' }}</div>
-                  <div><strong>Food:</strong>
-                    <div>Calories: {% if selected_food_calories is not none %}{{ selected_food_calories }} kcal{% else %}No entry{% endif %}</div>
-                    <div>Protein: {% if selected_food_protein is defined and selected_food_protein is not none %}{{ selected_food_protein }} g{% else %}—{% endif %}</div>
-                    <div>Carbs: {% if selected_food_carbs is defined and selected_food_carbs is not none %}{{ selected_food_carbs }} g{% else %}—{% endif %}</div>
-                    <div>Fats: {% if selected_food_fats is defined and selected_food_fats is not none %}{{ selected_food_fats }} g{% else %}—{% endif %}</div>
+              <div class="mt-3">
+                <div class="border rounded p-3 bg-white mb-3">
+                  <div class="history-label mb-1">Weight</div>
+                  <div class="fw-semibold">{{ (selected_weight | round(1)) if selected_weight is not none else 'No entry' }} lbs</div>
+                </div>
+                <div class="border rounded p-3 bg-white">
+                  <div class="history-label mb-2">Food Summary</div>
+                  {% set wheel_items = [
+                    ('Calories', selected_food_calories, macro_targets.calories or calorie_goal_value, 'kcal'),
+                    ('Protein', selected_food_protein if selected_food_protein is defined else None, macro_targets.protein, 'g'),
+                    ('Carbs', selected_food_carbs if selected_food_carbs is defined else None, macro_targets.carbs, 'g'),
+                    ('Fats', selected_food_fats if selected_food_fats is defined else None, macro_targets.fats, 'g')
+                  ] %}
+                  {% set wheel_colors = {
+                    'Calories': 'var(--macro-calories)',
+                    'Protein': 'var(--macro-protein)',
+                    'Carbs': 'var(--macro-carbs)',
+                    'Fats': 'var(--macro-fat)'
+                  } %}
+                  <div class="row g-3">
+                    {% for label, value, target, suffix in wheel_items %}
+                      <div class="col-6 col-lg-3">
+                        <div class="calendar-macro-wheel">
+                          {% set pct = 0 %}
+                          {% if value is not none and target %}
+                            {% set pct = (value / target * 100) if target > 0 else 0 %}
+                          {% endif %}
+                          {% set pct_clamped = 100 if pct >= 100 else pct %}
+                          {% set wheel_color = wheel_colors.get(label, 'var(--app-primary)') %}
+                          {% set wheel_radius = 48 %}
+                          {% set wheel_circumference = 2 * 3.14159 * wheel_radius %}
+                          {% set dashoffset = wheel_circumference - (wheel_circumference * (pct_clamped / 100)) %}
+                          {% set is_complete = target and value is not none and target > 0 and value >= target %}
+                          {% if is_complete %}
+                            {% set dashoffset = 0 %}
+                          {% endif %}
+                          {% set track_color = wheel_color if is_complete else wheel_base_color %}
+                          {% set progress_color = wheel_color %}
+                          <div class="macro-wheel {% if is_complete %}macro-wheel-solid{% endif %}" style="--wheel-track-color: {{ track_color }}; --wheel-progress-color: {{ progress_color }};">
+                            <svg class="macro-wheel-figure" viewBox="0 0 120 120" role="presentation" aria-hidden="true">
+                              <circle
+                                class="macro-wheel-track"
+                                cx="60"
+                                cy="60"
+                                r="{{ wheel_radius }}"
+                                stroke-width="12"
+                                fill="none"
+                              />
+                              <circle
+                                class="macro-wheel-progress"
+                                cx="60"
+                                cy="60"
+                                r="{{ wheel_radius }}"
+                                stroke-width="12"
+                                stroke-linecap="round"
+                                stroke-dasharray="{{ wheel_circumference | round(2) }} {{ wheel_circumference | round(2) }}"
+                                stroke-dashoffset="{{ dashoffset | round(2) }}"
+                                fill="none"
+                                transform="rotate(-90 60 60)"
+                              />
+                            </svg>
+                            <div class="wheel-value">
+                              {{ value if value is not none else '—' }}
+                              <small>{{ suffix }}</small>
+                            </div>
+                          </div>
+                          <div class="small text-muted mt-2">{{ label }}</div>
+                          {% if target %}
+                            <div class="small text-muted">{{ pct|round(0) }}% of target</div>
+                          {% else %}
+                            <div class="small text-muted">No target set</div>
+                          {% endif %}
+                        </div>
+                      </div>
+                    {% endfor %}
                   </div>
-                  <div class="mt-2"><strong>Workouts:</strong>
-                    {% if selected_workouts %}
-                      <ul class="list-unstyled small mb-0 mt-2">
-                        {% for workout in selected_workouts %}
-                          <li class="mb-1">
-                            <strong>{{ workout.time or '—' }}</strong>
-                            {% if workout.session and workout.session.template %}
-                              — {{ workout.session.template.name }}
-                            {% endif %}
-                            {% if workout.summary %}
-                              : {{ workout.summary }}
-                            {% endif %}
-                            <a class="ms-1" href="{{ url_for('template.view_session', session_id=workout.session.id) }}">View</a>
+                </div>
+                <div class="border rounded p-3 bg-white mt-3 text-start">
+                  <div class="history-label mb-2">Workouts</div>
+                  {% if selected_workouts %}
+                    {% set selected_iso = selected_date.strftime('%Y-%m-%d') if selected_date else '' %}
+                    <ul class="list-unstyled small mb-0 mt-2">
+                      {% for workout in selected_workouts %}
+                        <li class="mb-2 d-flex justify-content-between align-items-center gap-2">
+                            <div>
+                              <strong>{{ workout.template_name }}</strong>
+                              <span class="text-muted"> -- {{ workout.duration or '—' }}</span>
+                            </div>
+                            <a class="btn btn-link btn-sm p-0" href="{{ url_for('template.view_session', session_id=workout.session.id, return_to='calendar', date=selected_iso) }}">View</a>
                           </li>
                         {% endfor %}
                       </ul>
@@ -349,12 +443,23 @@
               <div class="card h-100 shadow-sm">
                 <div class="card-body text-center">
                   {% set goal_value = calorie_goal_value or 2000 %}
+                  {% set display_calories = totals.macro_calories if totals.macro_calories is not none else totals.calories %}
+                  {% set calorie_pct = (display_calories / goal_value * 100) if goal_value else 0 %}
+                  {% set clamped_calorie_pct = [calorie_pct, 200]|min %}
+                  {% if _theme == 'dark' %}
+                    {% set calorie_base_color = '#475569' %}
+                  {% else %}
+                    {% set calorie_base_color = '#cbd5f5' %}
+                  {% endif %}
+                  {% set calorie_ring_color = '#0d6efd' %}
                   <h5 class="card-title mb-4">Daily Calorie Goal</h5>
+                  {% set calorie_text_color = '#e2e8f0' if _theme == 'dark' else '#333' %}
+                  {% set calorie_sub_text_color = '#cbd5f5' if _theme == 'dark' else '#666' %}
                   <div class="d-flex justify-content-center align-items-center mb-3">
                     <svg class="progress-ring" width="200" height="200">
                       <circle
                         class="progress-ring-circle"
-                        stroke="#e0e0e0"
+                        stroke="{{ calorie_base_color }}"
                         stroke-width="15"
                         fill="transparent"
                         r="85"
@@ -363,14 +468,14 @@
                       />
                       <circle
                         class="progress-ring-circle"
-                        stroke="#ff6b6b"
+                        stroke="{{ calorie_ring_color }}"
                         stroke-width="15"
                         fill="transparent"
                         r="85"
                         cx="100"
                         cy="100"
                         stroke-dasharray="534.07 534.07"
-                        stroke-dashoffset="{{ 534.07 - (534.07 * (totals.calories / goal_value)) if goal_value else 534.07 }}"
+                        stroke-dashoffset="{{ 534.07 - (534.07 * (clamped_calorie_pct / 100)) if goal_value else 534.07 }}"
                         stroke-linecap="round"
                       />
                       <text
@@ -379,16 +484,16 @@
                         text-anchor="middle"
                         font-size="32"
                         font-weight="bold"
-                        fill="#333"
+                        fill="{{ calorie_text_color }}"
                       >
-                        {{ totals.calories | round(1) }}
+                        {{ display_calories | round(1) }}
                       </text>
                       <text
                         x="100"
                         y="115"
                         text-anchor="middle"
                         font-size="14"
-                        fill="#666"
+                        fill="{{ calorie_sub_text_color }}"
                       >
                         / {{ goal_value | round(1) }} cal
                       </text>
@@ -396,18 +501,18 @@
                   </div>
                   <div class="progress mb-2" style="height: 25px">
                     <div
-                      class="progress-bar bg-danger"
+                      class="progress-bar"
                       id="calorieProgressBar"
                       role="progressbar"
-                      style="width: {{ (totals.calories / goal_value * 100) | round(1) if goal_value else 0 }}%"
-                      aria-valuenow="{{ totals.calories }}"
+                      style="width: {{ calorie_pct | round(1) if goal_value else 0 }}%; background-color: {{ calorie_ring_color }};"
+                      aria-valuenow="{{ display_calories }}"
                       aria-valuemin="0"
                       aria-valuemax="{{ goal_value }}"
                     >
-                      {{ (totals.calories / goal_value * 100) | round(1) if goal_value else 0 }}%
+                      {{ calorie_pct | round(1) if goal_value else 0 }}%
                     </div>
                   </div>
-                  {% set remaining = goal_value - totals.calories %}
+                  {% set remaining = goal_value - display_calories %}
                   {% set remaining_class = 'text-success' if remaining > 0 else 'text-warning' %}
                   <p class="text-muted mb-0">
                     <span id="calorieRemainingText" class="{{ remaining_class }}">
@@ -485,107 +590,50 @@
                       {% endif %}
                     </div>
                     <div class="tab-pane fade" id="memberMealsPane" role="tabpanel" aria-labelledby="member-meals-tab">
-                      <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h6 class="mb-0">Create and manage your own meals</h6>
-                        <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#memberMealBuilder" aria-expanded="false">
-                          New Meal
-                        </button>
-                      </div>
-                      <div class="collapse" id="memberMealBuilder">
-                        <div class="card border-secondary mb-3">
-                          <div class="card-body">
-                            <div class="row g-2 align-items-center mb-2">
-                              <div class="col-md-4">
-                                <label class="form-label fw-semibold">Meal Name</label>
-                                <input type="text" id="memberMealName" class="form-control" placeholder="e.g. Post-workout bowl" />
-                              </div>
-                              <div class="col-md-3">
-                                <label class="form-label fw-semibold">Tab</label>
-                                <select id="memberMealSlot" class="form-select">
-                                  {% for slot, label in meal_slot_labels.items() %}
-                                    <option value="{{ slot }}">{{ label }}</option>
-                                  {% endfor %}
-                                </select>
-                              </div>
-                              <div class="col-md-5">
-                                <label class="form-label fw-semibold">Description <span class="text-muted">(optional)</span></label>
-                                <input type="text" id="memberMealDescription" class="form-control" placeholder="Notes for when to use this meal" />
-                              </div>
-                            </div>
-
-                            <hr class="my-3">
-
-                            <p class="small text-muted mb-2">Add ingredients from the USDA database:</p>
-                            <div class="row g-2 align-items-center">
-                              <div class="col-md-6">
-                                <input type="text" id="memberMealFoodSearch" class="form-control" placeholder="Search foods (e.g. chicken breast)" />
-                              </div>
-                              <div class="col-md-2">
-                                <button type="button" id="memberMealFoodSearchBtn" class="btn btn-outline-primary w-100">Search</button>
-                              </div>
-                            </div>
-                            <div id="memberMealFoodResults" class="list-group mt-2 d-none"></div>
-
-                            <div class="mt-3">
-                              <h6 class="fw-semibold">Ingredients</h6>
-                              <div id="memberMealIngredientList"></div>
-                            </div>
-
-                            <div class="text-end mt-3">
-                              <button type="button" class="btn btn-success btn-sm" id="memberMealSaveBtn">Save Meal</button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <ul class="nav nav-pills small" id="memberOwnedMealTabs" role="tablist">
+                      <p class="text-muted small mb-3">Your saved meals appear below. Use the builder above to create more.</p>
+                      {% set meals_ns = namespace(has_meals=false) %}
+                      <div id="memberMealsList">
                         {% for slot, label in meal_slot_labels.items() %}
-                          <li class="nav-item" role="presentation">
-                            <button class="nav-link {% if loop.first %}active{% endif %}" id="member-owned-tab-{{ slot }}" data-bs-toggle="pill" data-bs-target="#member-owned-panel-{{ slot }}" type="button" role="tab">{{ label }}</button>
-                          </li>
-                        {% endfor %}
-                      </ul>
-                      <div class="tab-content mt-3" id="memberOwnedMealContent">
-                        {% for slot, label in meal_slot_labels.items() %}
-                          <div class="tab-pane fade {% if loop.first %}show active{% endif %}" id="member-owned-panel-{{ slot }}" role="tabpanel" aria-labelledby="member-owned-tab-{{ slot }}" data-member-meal-slot="{{ slot }}">
-                            {% set member_slot_meals = member_meal_plan.get(slot) %}
-                            {% if member_slot_meals %}
-                              {% for meal in member_slot_meals %}
-                                <div class="border rounded-3 p-3 mb-3" data-member-meal-id="{{ meal.id }}">
-                                  <div class="d-flex justify-content-between align-items-start">
-                                    <div>
-                                      <h6 class="mb-1">{{ meal.name }}</h6>
-                                      {% if meal.description %}
-                                        <p class="mb-2 text-muted small">{{ meal.description }}</p>
-                                      {% endif %}
-                                      <p class="mb-2 small text-secondary">
-                                        {{ meal.macros.calories }} cal · {{ meal.macros.protein }}g protein · {{ meal.macros.carbs }}g carbs · {{ meal.macros.fats }}g fat
-                                      </p>
+                          {% set member_slot_meals = member_meal_plan.get(slot) %}
+                          {% if member_slot_meals %}
+                            {% set meals_ns.has_meals = true %}
+                            {% for meal in member_slot_meals %}
+                              <div class="border rounded-3 p-3 mb-3 member-meal-card" data-member-meal-id="{{ meal.id }}" data-member-meal-slot="{{ slot }}">
+                                <div class="d-flex justify-content-between align-items-start">
+                                  <div>
+                                    <div class="d-flex align-items-center gap-2 mb-1">
+                                      <span class="badge bg-light text-dark">{{ label }}</span>
+                                      <h6 class="mb-0">{{ meal.name }}</h6>
                                     </div>
-                                    <div class="btn-group btn-group-sm">
-                                      <button type="button" class="btn btn-outline-primary add-member-meal-btn" data-meal-id="{{ meal.id }}">Add Meal</button>
-                                      <button type="button" class="btn btn-outline-danger delete-member-meal-btn" data-meal-id="{{ meal.id }}">Delete</button>
-                                    </div>
+                                    {% if meal.description %}
+                                      <p class="mb-2 text-muted small">{{ meal.description }}</p>
+                                    {% endif %}
+                                    <p class="mb-2 small text-secondary">
+                                      {{ meal.macros.calories }} cal · {{ meal.macros.protein }}g protein · {{ meal.macros.carbs }}g carbs · {{ meal.macros.fats }}g fat
+                                    </p>
                                   </div>
-                                  <ul class="mb-0 small mt-2">
-                                    {% for ingredient in meal.ingredients %}
-                                      <li>
-                                        <strong>{{ ingredient.name }}</strong>
-                                        — {{ ingredient.grams }} g{% if ingredient.ounces %} / {{ ingredient.ounces }} oz{% endif %}
-                                        {% if ingredient.volume_ml %}
-                                          ({{ ingredient.volume_ml }} ml{% if ingredient.fluid_oz %} / {{ ingredient.fluid_oz }} fl oz{% endif %})
-                                        {% endif %}
-                                      </li>
-                                    {% endfor %}
-                                  </ul>
+                                  <div class="btn-group btn-group-sm">
+                                    <button type="button" class="btn btn-outline-primary add-member-meal-btn" data-meal-id="{{ meal.id }}">Add Meal</button>
+                                    <button type="button" class="btn btn-outline-danger delete-member-meal-btn" data-meal-id="{{ meal.id }}">Delete</button>
+                                  </div>
                                 </div>
-                              {% endfor %}
-                            {% else %}
-                              <p class="text-muted small mb-0">No meals in {{ label.lower() }} yet.</p>
-                            {% endif %}
-                          </div>
+                                <ul class="mb-0 small mt-2">
+                                  {% for ingredient in meal.ingredients %}
+                                    <li>
+                                      <strong>{{ ingredient.name }}</strong>
+                                      — {{ ingredient.grams }} g{% if ingredient.ounces %} / {{ ingredient.ounces }} oz{% endif %}
+                                      {% if ingredient.volume_ml %}
+                                        ({{ ingredient.volume_ml }} ml{% if ingredient.fluid_oz %} / {{ ingredient.fluid_oz }} fl oz{% endif %})
+                                      {% endif %}
+                                    </li>
+                                  {% endfor %}
+                                </ul>
+                              </div>
+                            {% endfor %}
+                          {% endif %}
                         {% endfor %}
                       </div>
+                      <p class="text-muted small mb-0 {% if meals_ns.has_meals %}d-none{% endif %}" id="memberMealsEmpty">No custom meals yet. Build one above.</p>
                     </div>
                   </div>
                 </div>
@@ -603,10 +651,10 @@
                   {% set protein_percent = protein_target and protein_target > 0 and (totals.protein / protein_target * 100) or 0 %}
                   <h3 class="mb-1">{{ totals.protein | round(1) }}g</h3>
                   <small class="text-muted">{{ (totals.protein * 4) | round(1) }} cal</small>
-                  <div class="progress macro-progress mt-2" style="height: 8px;">
-                    <div
-                      class="progress-bar bg-info"
-                      id="proteinProgressBar"
+                    <div class="progress macro-progress mt-2" style="height: 8px;">
+                      <div
+                        class="progress-bar"
+                        id="proteinProgressBar"
                       role="progressbar"
                       style="width: {{ protein_percent | round(1) }}%;"
                       aria-valuemin="0"
@@ -631,10 +679,10 @@
                   {% set carbs_percent = carbs_target and carbs_target > 0 and (totals.carbs / carbs_target * 100) or 0 %}
                   <h3 class="mb-1">{{ totals.carbs | round(1) }}g</h3>
                   <small class="text-muted">{{ (totals.carbs * 4) | round(1) }} cal</small>
-                  <div class="progress macro-progress mt-2" style="height: 8px;">
-                    <div
-                      class="progress-bar bg-primary"
-                      id="carbsProgressBar"
+                    <div class="progress macro-progress mt-2" style="height: 8px;">
+                      <div
+                        class="progress-bar"
+                        id="carbsProgressBar"
                       role="progressbar"
                       style="width: {{ carbs_percent | round(1) }}%;"
                       aria-valuemin="0"
@@ -659,10 +707,10 @@
                   {% set fats_percent = fats_target and fats_target > 0 and (totals.fat / fats_target * 100) or 0 %}
                   <h3 class="mb-1">{{ totals.fat | round(1) }}g</h3>
                   <small class="text-muted">{{ (totals.fat * 9) | round(1) }} cal</small>
-                  <div class="progress macro-progress mt-2" style="height: 8px;">
-                    <div
-                      class="progress-bar bg-warning"
-                      id="fatsProgressBar"
+                    <div class="progress macro-progress mt-2" style="height: 8px;">
+                      <div
+                        class="progress-bar"
+                        id="fatsProgressBar"
                       role="progressbar"
                       style="width: {{ fats_percent | round(1) }}%;"
                       aria-valuemin="0"
@@ -817,6 +865,65 @@
             </div>
           </div>
 
+          <!-- Custom Meal Builder -->
+          <div class="card mb-4">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                  <h5 class="mb-1">Build Custom Meal</h5>
+                  <p class="text-muted small mb-0">Save frequently used meals to the My Meals tab.</p>
+                </div>
+                <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#memberMealBuilder" aria-expanded="false">
+                  New Meal
+                </button>
+              </div>
+              <div class="collapse" id="memberMealBuilder">
+                <div class="border rounded-3 p-3">
+                  <div class="row g-2 align-items-center mb-2">
+                    <div class="col-md-4">
+                      <label class="form-label fw-semibold">Meal Name</label>
+                      <input type="text" id="memberMealName" class="form-control" placeholder="e.g. Post-workout bowl" />
+                    </div>
+                    <div class="col-md-3">
+                      <label class="form-label fw-semibold">Meal Time</label>
+                      <select id="memberMealSlot" class="form-select">
+                        {% for slot, label in meal_slot_labels.items() %}
+                          <option value="{{ slot }}">{{ label }}</option>
+                        {% endfor %}
+                      </select>
+                    </div>
+                    <div class="col-md-5">
+                      <label class="form-label fw-semibold">Description <span class="text-muted">(optional)</span></label>
+                      <input type="text" id="memberMealDescription" class="form-control" placeholder="Notes for when to use this meal" />
+                    </div>
+                  </div>
+
+                  <hr class="my-3">
+
+                  <p class="small text-muted mb-2">Add ingredients from the USDA database:</p>
+                  <div class="row g-2 align-items-center">
+                    <div class="col-md-6">
+                      <input type="text" id="memberMealFoodSearch" class="form-control" placeholder="Search foods (e.g. chicken breast)" />
+                    </div>
+                    <div class="col-md-2">
+                      <button type="button" id="memberMealFoodSearchBtn" class="btn btn-outline-primary w-100">Search</button>
+                    </div>
+                  </div>
+                  <div id="memberMealFoodResults" class="list-group mt-2 d-none"></div>
+
+                  <div class="mt-3">
+                    <h6 class="fw-semibold">Ingredients</h6>
+                    <div id="memberMealIngredientList"></div>
+                  </div>
+
+                  <div class="text-end mt-3">
+                    <button type="button" class="btn btn-success btn-sm" id="memberMealSaveBtn">Save Meal</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Display Logged Foods -->
           <h4 class="mb-3">Today's Foods</h4>
           <div id="foodLogsContainer">
@@ -902,6 +1009,7 @@
       </div>
     </nav>
 
+    <script src="{{ url_for('static', filename='js/theme-toggle.js') }}"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
       const searchInput = document.getElementById("food_search");
@@ -925,6 +1033,9 @@
       const memberMealIngredientList = document.getElementById("memberMealIngredientList");
       const memberMealSaveBtn = document.getElementById("memberMealSaveBtn");
       const memberMealBuilderCollapse = document.getElementById("memberMealBuilder");
+      const memberMealSlotLabels = {{ meal_slot_labels | tojson | safe }};
+      const memberMealsList = document.getElementById("memberMealsList");
+      const memberMealsEmpty = document.getElementById("memberMealsEmpty");
 
       // Fetch suggestions
       async function fetchFoods() {
@@ -1038,20 +1149,13 @@
         }
       }
 
-      function ensureMemberMealEmptyState(slot) {
-        const container = document.querySelector(`[data-member-meal-slot=\"${slot}\"]`);
-        if (!container) return;
-        const hasCard = container.querySelector("[data-member-meal-id]");
-        let emptyMessage = container.querySelector(".member-meals-empty");
-        if (!hasCard) {
-          if (!emptyMessage) {
-            emptyMessage = document.createElement("p");
-            emptyMessage.className = "text-muted small mb-0 member-meals-empty";
-            emptyMessage.textContent = `No meals in ${slot.replace('meal', 'meal ')} yet.`;
-            container.appendChild(emptyMessage);
-          }
-        } else if (emptyMessage) {
-          emptyMessage.remove();
+function updateMemberMealsEmptyState() {
+        if (!memberMealsEmpty) return;
+        const hasCard = memberMealsList && memberMealsList.querySelector("[data-member-meal-id]");
+        if (hasCard) {
+          memberMealsEmpty.classList.add("d-none");
+        } else {
+          memberMealsEmpty.classList.remove("d-none");
         }
       }
 
@@ -1132,11 +1236,13 @@
       }
 
       function renderMemberMealCard(meal) {
-        const container = document.querySelector(`[data-member-meal-slot=\"${meal.slot}\"]`);
-        if (!container) return;
+        if (!memberMealsList) return;
+        const slotLabel =
+          (memberMealSlotLabels && memberMealSlotLabels[meal.slot]) || "Meal";
         const card = document.createElement("div");
-        card.className = "border rounded-3 p-3 mb-3";
+        card.className = "border rounded-3 p-3 mb-3 member-meal-card";
         card.dataset.memberMealId = meal.id;
+        card.dataset.memberMealSlot = meal.slot || "";
         const macros = meal.macros || {};
         const calories = Number(macros.calories || 0).toFixed(1);
         const protein = Number(macros.protein || 0).toFixed(1);
@@ -1158,7 +1264,10 @@
         card.innerHTML = `
           <div class="d-flex justify-content-between align-items-start">
             <div>
-              <h6 class="mb-1">${meal.name}</h6>
+              <div class="d-flex align-items-center gap-2 mb-1">
+                <span class="badge bg-light text-dark">${slotLabel}</span>
+                <h6 class="mb-0">${meal.name}</h6>
+              </div>
               ${meal.description ? `<p class="mb-2 text-muted small">${meal.description}</p>` : ""}
               <p class="mb-2 small text-secondary">
                 ${calories} cal · ${protein}g protein · ${carbs}g carbs · ${fats}g fat
@@ -1174,9 +1283,8 @@
           </ul>
         `;
 
-        const emptyState = container.querySelector(".member-meals-empty");
-        if (emptyState) emptyState.remove();
-        container.prepend(card);
+        memberMealsList.prepend(card);
+        updateMemberMealsEmptyState();
       }
 
       async function memberFetchFoods() {
@@ -1396,7 +1504,9 @@
           }
 
           const goal = macroTargets.calories || 2000;
-          const calories = Number(data.calories || 0);
+          const calories = Number(
+            (data.macro_calories ?? data.calories ?? data.calories_from_macros) || 0
+          );
           const percent = goal ? Math.min((calories / goal) * 100, 100) : 0;
           const progressBar = document.getElementById("calorieProgressBar");
           if (progressBar) {
@@ -1566,7 +1676,7 @@
         const data = await res.json();
         if (data.status === "success") {
           renderMemberMealCard(data.meal);
-          ensureMemberMealEmptyState(data.meal.slot);
+          updateMemberMealsEmptyState();
           resetMemberMealBuilder();
           showMessage("Meal saved.", "success");
           if (memberMealBuilderCollapse) {
@@ -1635,10 +1745,8 @@
         const data = await res.json();
         if (data.status === "success") {
           const card = memberDeleteBtn.closest("[data-member-meal-id]");
-          const slotContainer = card ? card.closest("[data-member-meal-slot]") : null;
-          const slot = slotContainer ? slotContainer.dataset.memberMealSlot : null;
           if (card) card.remove();
-          if (slot) ensureMemberMealEmptyState(slot);
+          updateMemberMealsEmptyState();
           showMessage("Meal removed.", "success");
         } else {
           showMessage(data.message || "Unable to delete meal.", "danger");
@@ -1650,9 +1758,7 @@
     }
   });
 
-  document
-    .querySelectorAll("[data-member-meal-slot]")
-    .forEach((container) => ensureMemberMealEmptyState(container.dataset.memberMealSlot));
+  updateMemberMealsEmptyState();
 
   handleEmptyState();
 </script>

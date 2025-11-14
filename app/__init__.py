@@ -1,8 +1,8 @@
-from flask import Flask
+from flask import Flask, session
 from flask_sqlalchemy import SQLAlchemy 
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
-from flask_login import LoginManager
+from flask_login import LoginManager, current_user
 
 
 db = SQLAlchemy()
@@ -41,5 +41,15 @@ def create_app():
     app.register_blueprint(trainer_bp)
     app.register_blueprint(member_bp)
     app.register_blueprint(template_bp)
+
+    @app.context_processor
+    def inject_theme_mode():
+        mode = session.get("theme_mode")
+        if current_user.is_authenticated and getattr(current_user, "theme_mode", None):
+            mode = current_user.theme_mode
+        if not mode:
+            mode = "light"
+        session["theme_mode"] = mode
+        return {"theme_mode": mode}
 
     return app

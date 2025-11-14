@@ -1,0 +1,29 @@
+{% extends "layout.html" %}
+{% block title %}Message {{ client.first_name }}{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+  <h1 class="h3 mb-1">Message {{ client.first_name }} {{ client.last_name }}</h1>
+  <p class="text-muted mb-0">Send a quick note straight to your client's dashboard.</p>
+</div>
+
+<form method="POST" class="card shadow-sm">
+  <div class="card-body">
+    <div class="mb-3">
+      <label for="content" class="form-label">Message</label>
+      <textarea
+        id="content"
+        name="content"
+        class="form-control"
+        rows="5"
+        maxlength="2000"
+        placeholder="Share guidance, encouragement, or next steps"
+        required></textarea>
+    </div>
+  </div>
+  <div class="card-footer d-flex flex-column flex-sm-row justify-content-end gap-2">
+    <a href="{{ url_for('trainer.dashboard_trainer') }}" class="btn btn-outline-secondary">Cancel</a>
+    <button type="submit" class="btn btn-primary">Send Message</button>
+  </div>
+</form>
+{% endblock %}

@@ -24,6 +24,12 @@ MEAL_SLOT_LABELS: Dict[str, str] = {
     "snacks": "Snacks",
 }
 
+DEFAULT_MACRO_RATIOS: Dict[str, float] = {
+    "protein": 0.25,
+    "carbs": 0.45,
+    "fats": 0.30,
+}
+
 _VOLUME_CONVERSIONS_ML: Dict[str, float] = {
     "ml": 1.0,
     "milliliter": 1.0,
@@ -122,12 +128,58 @@ def scale_food_nutrients(food: Optional[Food], quantity_in_grams: float) -> Dict
             if ratio > 2 or ratio < 0.5:
                 adjusted_calories = macro_calories
 
+    macro_scaled = macro_calories * factor if macro_calories else None
+    calorie_value = macro_scaled if macro_scaled is not None else adjusted_calories * factor
+
     return {
-        "calories": adjusted_calories * factor,
+        "calories": calorie_value,
         "protein": base_protein * factor,
         "carbs": base_carbs * factor,
         "fats": base_fats * factor,
     }
+
+
+def derive_macro_targets(
+    calorie_target: Optional[float],
+    custom_protein_g: Optional[float],
+    custom_carbs_g: Optional[float],
+    custom_fats_g: Optional[float],
+    *,
+    ratio_overrides: Optional[Dict[str, Optional[float]]] = None,
+    macro_mode: Optional[str] = None,
+) -> Dict[str, Optional[float]]:
+    """Return macro targets in grams based on calorie goal, explicit grams, or ratio overrides."""
+    macros: Dict[str, Optional[float]] = {"calories": calorie_target}
+    ratios = dict(DEFAULT_MACRO_RATIOS)
+    if ratio_overrides:
+        for key, value in ratio_overrides.items():
+            if value is None:
+                continue
+            try:
+                ratios[key] = max(0.0, min(1.0, float(value)))
+            except (TypeError, ValueError):
+                continue
+
+    mode = (macro_mode or "").lower()
+    use_percent_mode = mode == "percent"
+
+    def _calc(macro_key: str, custom_value: Optional[float]) -> Optional[float]:
+        ratio = ratios.get(macro_key, 0.0)
+        divisor = 4 if macro_key in ("protein", "carbs") else 9
+        if use_percent_mode:
+            if not calorie_target or ratio <= 0:
+                return None
+            return round((calorie_target * ratio) / divisor, 1)
+        if custom_value is not None:
+            return round(custom_value, 1)
+        if not calorie_target or ratio <= 0:
+            return None
+        return round((calorie_target * ratio) / divisor, 1)
+
+    macros["protein"] = _calc("protein", custom_protein_g)
+    macros["carbs"] = _calc("carbs", custom_carbs_g)
+    macros["fats"] = _calc("fats", custom_fats_g)
+    return macros
 
 
 def find_measure(food_id: int, unit: str) -> Optional[FoodMeasure]:

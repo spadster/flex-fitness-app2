@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app
-from flask_login import login_user, logout_user
+from flask_login import login_user, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from app import db
 from app.models import User
@@ -34,6 +34,7 @@ def login_trainer():
         login_user(user)
         session["user_id"] = user.id
         session["role"] = user.role
+        session["theme_mode"] = user.theme_mode or session.get("theme_mode") or "light"
         flash(f"Welcome, Trainer {user.first_name}!", "success")
         return redirect(url_for("trainer.dashboard_trainer"))
 
@@ -62,6 +63,7 @@ def login_member():
         login_user(user)
         session["user_id"] = user.id
         session["role"] = user.role
+        session["theme_mode"] = user.theme_mode or session.get("theme_mode") or "light"
         flash(f"Welcome back, {user.first_name}!", "success")
 
         if user.role == "trainer":
@@ -494,7 +496,10 @@ def reset_password(token):
 
 @auth_bp.route("/logout")
 def logout():
+    theme_pref = getattr(current_user, "theme_mode", None)
     logout_user()
+    preserved_theme = theme_pref or session.get("theme_mode") or "light"
     session.clear()
+    session["theme_mode"] = preserved_theme
     flash("You have been logged out.", "info")
     return redirect(url_for("main.home"))

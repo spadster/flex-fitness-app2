@@ -4,124 +4,161 @@
   <meta charset="UTF-8">
   <title>Workout Session</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
   <style>
     body {
-      padding-bottom: 80px;
+      background: linear-gradient(135deg, #eaf0ff, #fdfdff);
     }
-
-    .bottom-nav {
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      background: #ffffff;
-      border-top: 1px solid rgba(0, 0, 0, 0.1);
-      z-index: 1050;
+    .section-card {
+      background: linear-gradient(180deg, #ffffff 0%, #f7f9ff 100%);
+      border-radius: 18px;
+      padding: 1.75rem;
+      box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+      border-top: 4px solid #4c8bf5;
+      height: 100%;
     }
-
-    .bottom-nav .nav-link {
-      color: #6c757d;
-      font-size: 0.85rem;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 0.25rem;
-      padding: 0.5rem 0;
+    .section-card.card-slate { border-top-color: #0a58ca; }
+    .exercise-row + .exercise-row {
+      border-top: 1px solid rgba(15, 23, 42, 0.08);
+      margin-top: 1rem;
+      padding-top: 1rem;
     }
-
-    .bottom-nav .nav-link .bi {
-      font-size: 1.25rem;
-    }
-
-    .bottom-nav .nav-link.active {
-      color: #0d6efd;
-      font-weight: 600;
+    .history-label {
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      color: #94a3b8;
+      letter-spacing: 0.08em;
     }
   </style>
 </head>
-<body class="bg-light">
-  <div class="container mt-5 mb-5">
-    <div class="d-flex justify-content-between align-items-center">
-      <div>
-        <h1 class="h3 mb-0">Workout Session</h1>
-        <p class="text-muted mb-0">Started {{ session.started_at.strftime('%Y-%m-%d %H:%M') if session.started_at else '—' }}</p>
-        <p class="text-muted">Completed {{ session.completed_at.strftime('%Y-%m-%d %H:%M') if session.completed_at else '—' }}</p>
-        {% if session.summary %}
-        <div class="alert alert-info py-2 px-3 small">{{ session.summary }}</div>
+<body class="app-shell" data-theme="{{ theme_mode or 'light' }}">
+  <header class="app-top-bar mb-4">
+    <div class="container d-flex align-items-center justify-content-between">
+      <a class="app-brand" href="{{ url_for('main.home') }}">Temp</a>
+      <div class="app-actions">
+        <button type="button" class="theme-toggle btn btn-sm btn-outline-light" aria-label="Toggle theme" aria-pressed="{{ 'true' if theme_mode == 'dark' else 'false' }}">
+          <span class="theme-toggle-label">{{ 'Light mode' if theme_mode == 'dark' else 'Dark mode' }}</span>
+        </button>
+        {% if current_user.is_authenticated %}
+          <span class="app-role-label">{{ current_user.role|capitalize }}</span>
         {% endif %}
+        <a href="{{ url_for('auth.logout') }}" class="app-logout-link">Log out</a>
       </div>
-      <a href="{{ url_for('template.list_templates') }}" class="btn btn-secondary btn-sm">Back</a>
+    </div>
+  </header>
+
+  <div class="container pb-5">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+      <div>
+        <p class="text-muted mb-1">Workout Session</p>
+        <h2 class="mb-1">{{ template_name }}</h2>
+        <div class="text-muted small">{{ session_date_display }}</div>
+      </div>
+      <a href="{{ back_url }}" class="btn btn-link text-decoration-none">
+        &larr; Back to {{ back_label }}
+      </a>
     </div>
 
-    <div class="table-responsive">
-      <table class="table table-sm">
-        <thead>
-          <tr>
-            <th>Exercise</th>
-            <th>Set</th>
-            <th>Reps</th>
-            <th>Weight (lbs)</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for s in sets %}
-          <tr>
-            <td>{{ s.exercise_name }}</td>
-            <td>{{ s.set_number }}</td>
-            <td>{{ s.reps }}</td>
-            <td>{{ s.weight | round(1) if s.weight is not none else '—' }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <div class="row g-4">
+      <div class="col-md-4">
+        <div class="section-card">
+          <h5 class="mb-3">Session Overview</h5>
+          <div class="mb-3">
+            <div class="history-label mb-1">Duration</div>
+            <div class="fw-semibold">{{ duration_display }}</div>
+          </div>
+          <div class="mb-3">
+            <div class="history-label mb-1">Total Volume</div>
+            <div class="fw-semibold">{{ total_volume }} lbs</div>
+          </div>
+          <div>
+            <div class="history-label mb-1">Logged Sets</div>
+            <div class="fw-semibold">{{ exercise_details | sum(attribute='total_sets') }} total</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-8">
+        <div class="section-card card-slate">
+          <h5 class="mb-3">Exercises</h5>
+          {% if exercise_details %}
+            {% for exercise in exercise_details %}
+              <div class="exercise-row">
+                <div class="d-flex flex-column flex-sm-row justify-content-between gap-3">
+                  <div>
+                    <div class="history-label mb-1">Exercise</div>
+                    <div class="fw-semibold">{{ exercise.total_sets }}x {{ exercise.name }}</div>
+                  </div>
+                  <div class="text-sm-end">
+                    <div class="history-label mb-1">Best Set</div>
+                    <div class="fw-semibold">
+                      {% if exercise.best_weight is not none %}
+                        {{ exercise.best_weight }} lbs
+                      {% else %}
+                        Bodyweight
+                      {% endif %}
+                      x {{ exercise.best_reps or 0 }}
+                    </div>
+                  </div>
+                </div>
+                <div class="mt-3">
+                  <div class="history-label mb-1">Logged Sets</div>
+                  <div class="d-flex flex-wrap gap-3">
+                    {% for s in exercise.sets %}
+                      <span class="badge bg-light text-dark border">
+                        Set {{ s.index }}:
+                        {% if s.weight is not none %}
+                          {{ s.weight }} lbs
+                        {% else %}
+                          Bodyweight
+                        {% endif %}
+                        x {{ s.reps or 0 }}
+                      </span>
+                    {% endfor %}
+                  </div>
+                </div>
+              </div>
+            {% endfor %}
+          {% else %}
+            <p class="text-muted mb-0">No sets recorded for this workout.</p>
+          {% endif %}
+        </div>
+      </div>
     </div>
   </div>
 
-  {% set trainer_clients_active = request.endpoint in ['trainer.dashboard_trainer', 'trainer.client_detail'] %}
-  {% set templates_active = request.endpoint in ['template.list_templates', 'template.view_template', 'template.start_workout', 'template.view_session'] %}
-
+  {% if return_to == 'calendar' %}
+    {% set active_tab = 'calendar' %}
+  {% else %}
+    {% set active_tab = '' %}
+  {% endif %}
   <nav class="bottom-nav shadow-sm">
     <div class="container px-0">
       <div class="d-flex justify-content-around align-items-center">
-        {% if current_user.is_authenticated and current_user.role == 'trainer' %}
-          <a href="{{ url_for('trainer.dashboard_trainer') }}" class="nav-link {% if trainer_clients_active %}active{% endif %}">
-            <i class="bi bi-people"></i>
-            <span>Clients</span>
-          </a>
-          <a href="{{ url_for('template.list_templates') }}" class="nav-link {% if templates_active %}active{% endif %}">
-            <i class="bi bi-collection"></i>
-            <span>Templates</span>
-          </a>
-          <a href="{{ url_for('auth.logout') }}" class="nav-link">
-            <i class="bi bi-box-arrow-right"></i>
-            <span>Logout</span>
-          </a>
-        {% else %}
-          <a href="{{ url_for('member.dashboard') }}" class="nav-link {% if request.endpoint == 'member.dashboard' and request.args.get('view') not in ['profile', 'calendar'] %}active{% endif %}">
-            <i class="bi bi-speedometer2"></i>
-            <span>Dashboard</span>
-          </a>
-          <a href="{{ url_for('member.dashboard', view='profile') }}" class="nav-link {% if request.endpoint == 'member.dashboard' and request.args.get('view') == 'profile' %}active{% endif %}">
-            <i class="bi bi-person-circle"></i>
-            <span>Profile</span>
-          </a>
-          <a href="{{ url_for('member.view_progress') }}" class="nav-link {% if request.endpoint == 'member.view_progress' %}active{% endif %}">
-            <i class="bi bi-graph-up"></i>
-            <span>Progress</span>
-          </a>
-          <a href="{{ url_for('template.list_templates') }}" class="nav-link {% if templates_active %}active{% endif %}">
-            <i class="bi bi-collection"></i>
-            <span>Templates</span>
-          </a>
-          <a href="{{ url_for('member.dashboard', view='calendar') }}" class="nav-link {% if request.endpoint == 'member.dashboard' and request.args.get('view') == 'calendar' %}active{% endif %}">
-            <i class="bi bi-calendar-event"></i>
-            <span>Calendar</span>
-          </a>
-        {% endif %}
+        <a href="{{ url_for('member.dashboard') }}" class="nav-link {% if active_tab == 'dashboard' %}active{% endif %}">
+          <i class="bi bi-speedometer2"></i>
+          <span>Dashboard</span>
+        </a>
+        <a href="{{ url_for('member.dashboard', view='profile') }}" class="nav-link">
+          <i class="bi bi-person-circle"></i>
+          <span>Profile</span>
+        </a>
+        <a href="{{ url_for('member.member_summary') }}" class="nav-link">
+          <i class="bi bi-graph-up"></i>
+          <span>My Stats</span>
+        </a>
+        <a href="{{ url_for('template.list_templates') }}" class="nav-link">
+          <i class="bi bi-collection"></i>
+          <span>Templates</span>
+        </a>
+        <a href="{{ url_for('member.dashboard', view='calendar') }}" class="nav-link {% if active_tab == 'calendar' %}active{% endif %}">
+          <i class="bi bi-calendar-event"></i>
+          <span>Calendar</span>
+        </a>
       </div>
     </div>
   </nav>
 
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="{{ url_for('static', filename='js/theme-toggle.js') }}"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

@@ -5,15 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Member Login | Temp</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
 </head>
-<body class="bg-light">
+<body class="app-shell" data-theme="{{ theme_mode or 'light' }}">
 
-  <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
-    <div class="container">
-      <a class="navbar-brand ms-auto fw" href="{{ url_for('main.home')}}">Temp</a>
+  <header class="app-top-bar">
+    <div class="container d-flex align-items-center justify-content-between">
+      <a class="app-brand" href="{{ url_for('main.home')}}">Temp</a>
+      <div class="app-actions">
+        <button type="button" class="theme-toggle btn btn-sm btn-outline-light" aria-label="Toggle theme" aria-pressed="{{ 'true' if theme_mode == 'dark' else 'false' }}">
+          <span class="theme-toggle-label">{{ 'Light mode' if theme_mode == 'dark' else 'Dark mode' }}</span>
+        </button>
+        <span class="app-role-label">Member</span>
+        <a href="{{ url_for('main.home')}}" class="app-logout-link">Back to site</a>
+      </div>
     </div>
-  </nav>
+  </header>
 
   <div class="container d-flex flex-column justify-content-center align-items-center" style="min-height: 90vh;">
     <div class="card shadow-sm w-100" style="max-width: 400px;">
@@ -53,6 +61,7 @@
     </div>
   </div>
 
+  <script src="{{ url_for('static', filename='js/theme-toggle.js') }}"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

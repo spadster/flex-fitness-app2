@@ -2,6 +2,7 @@ import os
 
 from datetime import datetime, timedelta
 import calendar as _calendar
+import math
 
 from flask import Blueprint, render_template, flash, redirect, url_for, request, abort, jsonify, current_app
 from flask_login import login_required, current_user
@@ -18,6 +19,7 @@ from app.models import (
     FoodMeasure,
     TrainerMeal,
     TrainerMealIngredient,
+    Message,
 )
 from app.services.nutrition import (
     convert_to_grams,
@@ -25,12 +27,8 @@ from app.services.nutrition import (
     group_meals_by_slot,
     MEAL_SLOT_LABELS,
 )
+from app.routes.member import build_member_summary_context
 from sqlalchemy import or_, func
-
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
-import pandas as pd
-import plotly.graph_objs as go
 
 trainer_bp = Blueprint('trainer', __name__, url_prefix='/trainer')
 
@@ -160,9 +158,59 @@ def client_detail(member_id):
                     except ValueError:
                         flash(f"Invalid {label}.", "warning")
 
-            if updated_macros:
+            mode_changed = client.macro_target_mode != 'grams'
+            client.macro_target_mode = 'grams'
+            if updated_macros or mode_changed:
                 db.session.commit()
                 flash("Custom macro targets updated.", "success")
+            else:
+                flash("No macro changes detected.", "info")
+
+            if redirect_view:
+                return redirect(url_for('trainer.client_detail', member_id=client.id, view=redirect_view))
+            return redirect(url_for('trainer.client_detail', member_id=client.id))
+        elif action == 'update_macro_percent':
+            ratio_mapping = [
+                ('macro_ratio_protein', 'protein_percent', "protein percentage"),
+                ('macro_ratio_carbs', 'carb_percent', "carb percentage"),
+                ('macro_ratio_fats', 'fat_percent', "fat percentage"),
+            ]
+            ratio_updates = {}
+            ratio_changed = False
+            invalid_input = False
+            for attr_name, form_key, label in ratio_mapping:
+                raw_value = request.form.get(form_key, '')
+                value = raw_value.strip()
+                if value == '':
+                    new_value = None
+                else:
+                    try:
+                        pct_value = float(value)
+                        if pct_value < 0 or pct_value > 100:
+                            raise ValueError
+                    except ValueError:
+                        flash(f"Invalid {label}.", "warning")
+                        invalid_input = True
+                        break
+                    new_value = pct_value / 100.0
+                ratio_updates[attr_name] = new_value
+            if invalid_input:
+                if redirect_view:
+                    return redirect(url_for('trainer.client_detail', member_id=client.id, view=redirect_view))
+                return redirect(url_for('trainer.client_detail', member_id=client.id))
+
+            for attr_name, new_value in ratio_updates.items():
+                if getattr(client, attr_name) != new_value:
+                    ratio_changed = True
+                    setattr(client, attr_name, new_value)
+
+            mode_changed = client.macro_target_mode != 'percent'
+            client.macro_target_mode = 'percent'
+            if ratio_changed or mode_changed:
+                db.session.commit()
+                flash("Macro percentages updated.", "success")
+            else:
+                flash("No macro percentage changes detected.", "info")
 
             if redirect_view:
                 return redirect(url_for('trainer.client_detail', member_id=client.id, view=redirect_view))
@@ -684,133 +732,49 @@ def client_summary_view(member_id):
         return redirect(url_for('trainer.dashboard_trainer'))
 
     client = _get_trainer_client(member_id)
-    now = datetime.utcnow()
-    week_ago = now - timedelta(days=7)
-    month_ago = now - timedelta(days=30)
+    macro_week_param = request.args.get("macro_week", type=int)
+    context = build_member_summary_context(client, macro_week_param)
+    macro_week_prev = context.get("macro_week_prev")
+    macro_week_next = context.get("macro_week_next")
+    context.update({
+        "summary_role": "trainer",
+        "summary_nav": "trainer",
+        "macro_prev_url": url_for('trainer.client_summary_view', member_id=client.id, macro_week=macro_week_prev) if macro_week_prev is not None else None,
+        "macro_next_url": url_for('trainer.client_summary_view', member_id=client.id, macro_week=macro_week_next) if macro_week_next is not None else None,
+    })
+    return render_template("member-summary.html", **context)
 
-    # ----- WEIGHT DATA -----
-    weekly_weights = (
-        db.session.query(Progress.date, Progress.weight)
-        .filter(Progress.user_id == client.id, Progress.date >= week_ago)
-        .order_by(Progress.date)
-        .all()
-    )
-    monthly_weights = (
-        db.session.query(Progress.date, Progress.weight)
-        .filter(Progress.user_id == client.id, Progress.date >= month_ago)
-        .order_by(Progress.date)
-        .all()
-    )
 
-    df_week = pd.DataFrame(weekly_weights, columns=["date", "weight"]) if weekly_weights else pd.DataFrame()
-    df_month = pd.DataFrame(monthly_weights, columns=["date", "weight"]) if monthly_weights else pd.DataFrame()
+@trainer_bp.route('/send-message/<int:client_id>', methods=['GET', 'POST'])
+@login_required
+def send_message(client_id: int):
+    if current_user.role != 'trainer':
+        flash("Access denied.", "danger")
+        return redirect(url_for('main.home'))
 
-    # ----- NUTRITION AGGREGATES -----
-    def get_nutrition(start_date, days):
-        q = (
-            db.session.query(
-                func.sum(Food.calories * UserFoodLog.quantity).label("calories"),
-                func.sum(Food.protein_g * UserFoodLog.quantity).label("protein"),
-                func.sum(Food.carbs_g * UserFoodLog.quantity).label("carbs"),
-                func.sum(Food.fats_g * UserFoodLog.quantity).label("fats"),
-            )
-            .select_from(UserFoodLog)
-            .join(Food, Food.id == UserFoodLog.food_id)
-            .filter(UserFoodLog.user_id == client.id)
-            .filter(UserFoodLog.log_date >= start_date)
-        ).first()
-        return {
-            "calories": round((q.calories or 0) / days, 1),
-            "protein": round((q.protein or 0) / days, 1),
-            "carbs": round((q.carbs or 0) / days, 1),
-            "fats": round((q.fats or 0) / days, 1),
-        }
+    client = _get_trainer_client(client_id)
 
-    # ----- WORKOUT AGGREGATES -----
-    def get_workouts(start_date):
-        q = (
-            db.session.query(
-                func.count(func.distinct(WorkoutSession.id)).label("workouts"),
-                func.count(WorkoutSet.id).label("sets"),
-                func.sum(WorkoutSet.reps).label("reps"),
-                func.sum(WorkoutSet.reps * WorkoutSet.weight).label("volume"),
-            )
-            .select_from(WorkoutSession)
-            .join(WorkoutSet, WorkoutSet.session_id == WorkoutSession.id)
-            .filter(WorkoutSession.user_id == client.id)
-            .filter(WorkoutSession.started_at >= start_date)
-        ).first()
-        return {
-            "workouts": int(q.workouts or 0),
-            "sets": int(q.sets or 0),
-            "reps": int(q.reps or 0),
-            "volume": int(q.volume or 0),
-        }
+    if request.method == 'POST':
+        content = request.form.get('content', '').strip()
+        if not content:
+            flash("Message cannot be empty.", "warning")
+            return redirect(url_for('trainer.send_message', client_id=client_id))
 
-    # Weekly + Monthly Aggregates
-    weekly_nutrition = get_nutrition(week_ago, 7)
-    monthly_nutrition = get_nutrition(month_ago, 30)
-    weekly_workouts = get_workouts(week_ago)
-    monthly_workouts = get_workouts(month_ago)
-
-    # ----- INTERACTIVE PLOTS -----
-    def make_line_chart(df, title):
-        if df.empty:
-            return None
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=df["date"],
-            y=df["weight"],
-            mode="lines+markers",
-            line=dict(color="#007bff", width=3),
-            marker=dict(size=7)
-        ))
-        fig.update_layout(
-            title=title,
-            xaxis_title="Date",
-            yaxis_title="Weight (kg)",
-            template="plotly_white",
-            margin=dict(l=40, r=40, t=60, b=40)
+        message = Message(
+            trainer_id=current_user.id,
+            client_id=client.id,
+            content=content,
         )
-        return fig.to_html(full_html=False)
+        db.session.add(message)
+        db.session.commit()
 
-    weekly_chart = make_line_chart(df_week, f"{client.first_name}'s Weekly Weight Trend")
-    monthly_chart = make_line_chart(df_month, f"{client.first_name}'s Monthly Weight Trend")
+        flash("Message sent successfully.", "success")
+        return redirect(url_for('trainer.dashboard_trainer'))
 
-    def make_summary_bar(title, nutrition_data, workout_data):
-        categories = ["Calories", "Protein", "Carbs", "Fats", "Workouts", "Sets", "Reps", "Volume"]
-        values = [
-            nutrition_data["calories"], nutrition_data["protein"],
-            nutrition_data["carbs"], nutrition_data["fats"],
-            workout_data["workouts"], workout_data["sets"],
-            workout_data["reps"], workout_data["volume"]
-        ]
-        colors = ["#36a2eb"] * 4 + ["#ff9800"] * 4
-        fig = go.Figure([go.Bar(x=categories, y=values, marker_color=colors)])
-        fig.update_layout(
-            title=title,
-            xaxis_title="Metrics",
-            yaxis_title="Values",
-            template="plotly_white",
-            margin=dict(l=40, r=40, t=60, b=40)
-        )
-        return fig.to_html(full_html=False)
-
-    weekly_summary_chart = make_summary_bar("Weekly Summary: Nutrition & Workouts", weekly_nutrition, weekly_workouts)
-    monthly_summary_chart = make_summary_bar("Monthly Summary: Nutrition & Workouts", monthly_nutrition, monthly_workouts)
-
-    # ----- RENDER -----
     return render_template(
-        "client-summary.html",
+        'trainer_send_message.html',
+        trainer=current_user,
         client=client,
-        weekly_chart=weekly_chart,
-        monthly_chart=monthly_chart,
-        weekly_summary_chart=weekly_summary_chart,
-        monthly_summary_chart=monthly_summary_chart,
-        weekly_nutrition=weekly_nutrition,
-        monthly_nutrition=monthly_nutrition,
-        weekly_workouts=weekly_workouts,
-        monthly_workouts=monthly_workouts,
     )
 
         

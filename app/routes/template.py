@@ -50,6 +50,24 @@ def _search_exercises(term):
     return results
 
 
+def _human_duration(started_at, completed_at):
+    if not started_at:
+        return "--"
+    end_time = completed_at or datetime.utcnow()
+    try:
+        diff = end_time - started_at
+    except Exception:
+        return "--"
+    total_seconds = max(int(diff.total_seconds()), 0)
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h {minutes}m"
+    if minutes:
+        return f"{minutes}m"
+    return f"{seconds}s"
+
+
 @template_bp.route('/api/search')
 @login_required
 def search_exercises_api():
@@ -434,4 +452,75 @@ def view_session(session_id):
         .order_by(WorkoutSet.exercise_name.asc(), WorkoutSet.set_number.asc())
         .all()
     )
-    return render_template('view-session.html', session=session, sets=sets)
+    exercise_map = {}
+    total_volume = 0
+    for s in sets:
+        name = s.exercise_name or "Exercise"
+        entry = exercise_map.setdefault(name, {"sets": []})
+        entry["sets"].append(s)
+        reps = s.reps or 0
+        weight_val = s.weight if s.weight is not None else 0
+        total_volume += weight_val * reps
+
+    exercise_details = []
+    for name, data in sorted(exercise_map.items()):
+        best_weight = None
+        best_reps = 0
+        formatted_sets = []
+        for idx, s in enumerate(data["sets"], start=1):
+            reps = s.reps or 0
+            weight_val = s.weight
+            formatted_sets.append({
+                "index": idx,
+                "reps": reps,
+                "weight": round(weight_val, 1) if weight_val is not None else None,
+            })
+            compare_weight = weight_val if weight_val is not None else 0
+            current_best = best_weight if best_weight is not None else 0
+            should_replace = False
+            if best_weight is None or compare_weight > current_best:
+                should_replace = True
+            elif compare_weight == current_best and reps > best_reps:
+                should_replace = True
+            if should_replace:
+                best_weight = round(weight_val, 1) if weight_val is not None else None
+                best_reps = reps
+
+        exercise_details.append({
+            "name": name,
+            "total_sets": len(data["sets"]),
+            "best_weight": best_weight,
+            "best_reps": best_reps,
+            "sets": formatted_sets,
+        })
+
+    duration_display = _human_duration(session.started_at, session.completed_at)
+    session_date = session.completed_at or session.started_at
+    session_date_display = session_date.strftime('%B %d, %Y • %I:%M %p') if session_date else "--"
+    template_name = session.template.name if session.template else "Workout Session"
+
+    return_to = request.args.get('return_to')
+    return_date = request.args.get('date')
+    if return_to == 'calendar':
+        calendar_args = {'view': 'calendar'}
+        day_value = return_date or (session_date.strftime('%Y-%m-%d') if session_date else None)
+        if day_value:
+            calendar_args['day'] = day_value
+        back_url = url_for('member.dashboard', **calendar_args)
+        back_label = "Calendar"
+    else:
+        back_url = url_for('template.list_templates')
+        back_label = "Templates"
+
+    return render_template(
+        'view-session.html',
+        session=session,
+        exercise_details=exercise_details,
+        duration_display=duration_display,
+        total_volume=int(total_volume),
+        session_date_display=session_date_display,
+        template_name=template_name,
+        back_url=back_url,
+        back_label=back_label,
+        return_to=return_to,
+    )

@@ -5,47 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Trainer Dashboard | Temp</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}" />
   <style>
-    body {
-      padding-bottom: 80px;
-    }
-
-    .bottom-nav {
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      background: #ffffff;
-      border-top: 1px solid rgba(0, 0, 0, 0.1);
-      z-index: 1050;
-    }
-
-    .bottom-nav .nav-link {
-      color: #6c757d;
-      font-size: 0.85rem;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 0.25rem;
-      padding: 0.5rem 0;
-    }
-
-    .bottom-nav .nav-link .bi {
-      font-size: 1.25rem;
-    }
-
-    .bottom-nav .nav-link.active {
-      color: #0d6efd;
-      font-weight: 600;
-    }
   </style>
 </head>
-<body class="bg-light">
-  <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
-    <div class="container">
-      <a class="navbar-brand ms-auto fw" href="{{ url_for('main.home')}}">Temp</a>
+<body class="app-shell" data-theme="{{ theme_mode or 'light' }}">
+  <header class="app-top-bar">
+    <div class="container d-flex align-items-center justify-content-between">
+      <a class="app-brand" href="{{ url_for('main.home')}}">Temp</a>
+      <div class="app-actions">
+        <button type="button" class="theme-toggle btn btn-sm btn-outline-light" aria-label="Toggle theme" aria-pressed="{{ 'true' if theme_mode == 'dark' else 'false' }}">
+          <span class="theme-toggle-label">{{ 'Light mode' if theme_mode == 'dark' else 'Dark mode' }}</span>
+        </button>
+        <span class="app-role-label">Trainer</span>
+        <a href="{{ url_for('auth.logout') }}" class="app-logout-link">Log out</a>
+      </div>
     </div>
-  </nav>
+  </header>
   <div class="container py-5 mb-5">
     <div class="row mb-4 text-center">
       <h1 class="display-4 fw-bold">Trainer Dashboard</h1>
@@ -54,11 +30,6 @@
         Your Trainer Code: <strong>{{ trainer.trainer_code }}</strong>
       </p>
       <p class="text-muted">Client overview for {{ today.strftime('%B %d, %Y') }}</p>
-      <div class="d-flex justify-content-center gap-2 mt-2">
-        <a href="{{ url_for('template.list_templates') }}" class="btn btn-primary">Exercise Templates</a>
-        <a href="{{ url_for('trainer.create_meal') }}" class="btn btn-success">Create Meal</a>
-        <a href="{{ url_for('auth.logout') }}" class="btn btn-outline-primary">Log Out</a>
-      </div>
     </div>
     {% if clients %}
       <div class="table-responsive">
@@ -93,6 +64,7 @@
                 <td class="text-center">{{ '%.1f' | format(client.macros.fats) }}</td>
                 <td class="text-end">
                   <a href="{{ url_for('trainer.client_detail', member_id=client.record.id) }}" class="btn btn-sm btn-outline-primary">View</a>
+                  <a href="{{ url_for('trainer.send_message', client_id=client.record.id) }}" class="btn btn-sm btn-primary ms-1">Message</a>
                 </td>
               </tr>
             {% endfor %}
@@ -107,7 +79,7 @@
 
   </div>
 
-  {% set trainer_clients_active = request.endpoint in ['trainer.dashboard_trainer', 'trainer.client_detail'] %}
+  {% set trainer_clients_active = request.endpoint in ['trainer.dashboard_trainer', 'trainer.client_detail', 'trainer.client_summary_view'] %}
   {% set trainer_templates_active = request.endpoint in ['template.list_templates', 'template.view_template', 'template.start_workout', 'template.view_session'] %}
   {% set trainer_meals_active = request.endpoint in ['trainer.create_meal', 'trainer.edit_meal'] %}
 
@@ -126,14 +98,11 @@
           <i class="bi bi-egg-fried"></i>
           <span>Meals</span>
         </a>
-        <a href="{{ url_for('auth.logout') }}" class="nav-link">
-          <i class="bi bi-box-arrow-right"></i>
-          <span>Logout</span>
-        </a>
       </div>
     </div>
   </nav>
 
+  <script src="{{ url_for('static', filename='js/theme-toggle.js') }}"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

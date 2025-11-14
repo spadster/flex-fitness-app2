@@ -5,52 +5,26 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Client Detail</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}" />
   <style>
-    body {
-      padding-bottom: 80px;
-    }
-
-    .bottom-nav {
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      background: #ffffff;
-      border-top: 1px solid rgba(0, 0, 0, 0.1);
-      z-index: 1050;
-    }
-
-    .bottom-nav .nav-link {
-      color: #6c757d;
-      font-size: 0.85rem;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 0.25rem;
-      padding: 0.5rem 0;
-    }
-
-    .bottom-nav .nav-link .bi {
-      font-size: 1.25rem;
-    }
-
-    .bottom-nav .nav-link.active {
-      color: #0d6efd;
-      font-weight: 600;
-    }
-
     .calendar-day {
       min-height: 110px;
     }
   </style>
 </head>
-<body class="bg-light">
-  <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
-    <div class="container">
-      <a class="navbar-brand ms-auto fw" href="{{ url_for('main.home') }}">Temp</a>
-      <a href="{{ url_for('auth.logout') }}" class="btn btn-outline-light ms-3">Log Out</a>
+<body class="app-shell" data-theme="{{ theme_mode or 'light' }}">
+  <header class="app-top-bar">
+    <div class="container d-flex align-items-center justify-content-between">
+      <a class="app-brand" href="{{ url_for('main.home') }}">Temp</a>
+      <div class="app-actions">
+        <button type="button" class="theme-toggle btn btn-sm btn-outline-light" aria-label="Toggle theme" aria-pressed="{{ 'true' if theme_mode == 'dark' else 'false' }}">
+          <span class="theme-toggle-label">{{ 'Light mode' if theme_mode == 'dark' else 'Dark mode' }}</span>
+        </button>
+        <span class="app-role-label">Trainer</span>
+        <a href="{{ url_for('auth.logout') }}" class="app-logout-link">Log out</a>
+      </div>
     </div>
-  </nav>
+  </header>
 
   <div class="container mt-4 mb-5">
     <div class="d-flex justify-content-between align-items-center mb-3">
@@ -254,31 +228,78 @@
   <div class="col-lg-6">
     <div class="card h-100">
       <div class="card-body">
-        <h5 class="card-title">Set Custom Macros</h5>
-        <form method="POST">
-          <input type="hidden" name="action" value="update_macros" />
-          <input type="hidden" name="redirect_view" value="{{ view }}" />
-          <div class="row g-3">
-            <div class="col-md-6">
-              <label class="form-label">Calories</label>
-              <input type="number" step="0.1" name="custom_calorie_target" class="form-control" value="{{ client.custom_calorie_target | round(1) if client.custom_calorie_target is not none else '' }}" placeholder="e.g. 2000" />
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">Protein (g)</label>
-              <input type="number" step="0.1" name="custom_protein_target" class="form-control" value="{{ client.custom_protein_target_g | round(1) if client.custom_protein_target_g is not none else '' }}" placeholder="e.g. 160" />
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">Carbs (g)</label>
-              <input type="number" step="0.1" name="custom_carb_target" class="form-control" value="{{ client.custom_carb_target_g | round(1) if client.custom_carb_target_g is not none else '' }}" placeholder="e.g. 220" />
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">Fat (g)</label>
-              <input type="number" step="0.1" name="custom_fat_target" class="form-control" value="{{ client.custom_fat_target_g | round(1) if client.custom_fat_target_g is not none else '' }}" placeholder="e.g. 60" />
-            </div>
+        {% set macro_mode = client.macro_target_mode or 'grams' %}
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <h5 class="card-title mb-0">Set Custom Macros</h5>
+          <span class="badge text-bg-light text-uppercase small">Mode: {{ 'Percent' if macro_mode == 'percent' else 'Grams' }}</span>
+        </div>
+        <ul class="nav nav-pills mt-3" id="macroModeTabs" role="tablist">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link {% if macro_mode != 'percent' %}active{% endif %}" id="macro-grams-tab" data-bs-toggle="pill" data-bs-target="#macro-grams-panel" type="button" role="tab" aria-controls="macro-grams-panel" aria-selected="{{ 'true' if macro_mode != 'percent' else 'false' }}">By grams</button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link {% if macro_mode == 'percent' %}active{% endif %}" id="macro-percent-tab" data-bs-toggle="pill" data-bs-target="#macro-percent-panel" type="button" role="tab" aria-controls="macro-percent-panel" aria-selected="{{ 'true' if macro_mode == 'percent' else 'false' }}">By % of calories</button>
+          </li>
+        </ul>
+        <div class="tab-content mt-3" id="macroModeContent">
+          <div class="tab-pane fade {% if macro_mode != 'percent' %}show active{% endif %}" id="macro-grams-panel" role="tabpanel" aria-labelledby="macro-grams-tab">
+            <form method="POST">
+              <input type="hidden" name="action" value="update_macros" />
+              <input type="hidden" name="redirect_view" value="{{ view }}" />
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <label class="form-label">Calories</label>
+                  <input type="number" step="0.1" name="custom_calorie_target" class="form-control" value="{{ client.custom_calorie_target | round(1) if client.custom_calorie_target is not none else '' }}" placeholder="e.g. 2000" />
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Protein (g)</label>
+                  <input type="number" step="0.1" name="custom_protein_target" class="form-control" value="{{ client.custom_protein_target_g | round(1) if client.custom_protein_target_g is not none else '' }}" placeholder="e.g. 160" />
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Carbs (g)</label>
+                  <input type="number" step="0.1" name="custom_carb_target" class="form-control" value="{{ client.custom_carb_target_g | round(1) if client.custom_carb_target_g is not none else '' }}" placeholder="e.g. 220" />
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Fat (g)</label>
+                  <input type="number" step="0.1" name="custom_fat_target" class="form-control" value="{{ client.custom_fat_target_g | round(1) if client.custom_fat_target_g is not none else '' }}" placeholder="e.g. 60" />
+                </div>
+              </div>
+              <button type="submit" class="btn btn-primary mt-3">Save Custom Macros</button>
+              <p class="text-muted small mt-2 mb-0">Leave any field blank to clear that target.</p>
+            </form>
           </div>
-          <button type="submit" class="btn btn-primary mt-3">Save Custom Macros</button>
-          <p class="text-muted small mt-2 mb-0">Leave any field blank to clear that target.</p>
-        </form>
+          <div class="tab-pane fade {% if macro_mode == 'percent' %}show active{% endif %}" id="macro-percent-panel" role="tabpanel" aria-labelledby="macro-percent-tab">
+            <form method="POST">
+              <input type="hidden" name="action" value="update_macro_percent" />
+              <input type="hidden" name="redirect_view" value="{{ view }}" />
+              <div class="row g-3">
+                <div class="col-md-4">
+                  <label class="form-label">Protein (%)</label>
+                  <div class="input-group">
+                    <input type="number" step="0.1" min="0" max="100" name="protein_percent" class="form-control" value="{{ (client.macro_ratio_protein * 100) | round(1) if client.macro_ratio_protein is not none else '' }}" placeholder="25" />
+                    <span class="input-group-text">%</span>
+                  </div>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label">Carbs (%)</label>
+                  <div class="input-group">
+                    <input type="number" step="0.1" min="0" max="100" name="carb_percent" class="form-control" value="{{ (client.macro_ratio_carbs * 100) | round(1) if client.macro_ratio_carbs is not none else '' }}" placeholder="45" />
+                    <span class="input-group-text">%</span>
+                  </div>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label">Fat (%)</label>
+                  <div class="input-group">
+                    <input type="number" step="0.1" min="0" max="100" name="fat_percent" class="form-control" value="{{ (client.macro_ratio_fats * 100) | round(1) if client.macro_ratio_fats is not none else '' }}" placeholder="30" />
+                    <span class="input-group-text">%</span>
+                  </div>
+                </div>
+              </div>
+              <button type="submit" class="btn btn-primary mt-3">Save Macro Percentages</button>
+              <p class="text-muted small mt-2 mb-0">Leave a field blank to fall back to the default 25/45/30 split.</p>
+            </form>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -439,8 +460,9 @@
     {% endif %}
   </div>
 
-  {% set trainer_clients_active = request.endpoint in ['trainer.dashboard_trainer', 'trainer.client_detail'] %}
+  {% set trainer_clients_active = request.endpoint in ['trainer.dashboard_trainer', 'trainer.client_detail', 'trainer.client_summary_view'] %}
   {% set templates_active = request.endpoint in ['template.list_templates', 'template.view_template', 'template.start_workout', 'template.view_session'] %}
+  {% set trainer_meals_active = request.endpoint in ['trainer.create_meal', 'trainer.edit_meal'] %}
 
   <nav class="bottom-nav shadow-sm">
     <div class="container px-0">
@@ -453,14 +475,15 @@
           <i class="bi bi-collection"></i>
           <span>Templates</span>
         </a>
-        <a href="{{ url_for('auth.logout') }}" class="nav-link">
-          <i class="bi bi-box-arrow-right"></i>
-          <span>Logout</span>
+        <a href="{{ url_for('trainer.create_meal') }}" class="nav-link {% if trainer_meals_active %}active{% endif %}">
+          <i class="bi bi-egg-fried"></i>
+          <span>Meals</span>
         </a>
       </div>
     </div>
   </nav>
 
+  <script src="{{ url_for('static', filename='js/theme-toggle.js') }}"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

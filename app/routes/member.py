@@ -11,22 +11,84 @@ from app.models import (
     TrainerMeal,
     MemberMeal,
     MemberMealIngredient,
+    Message,
 )
 from app.services.nutrition import (
     scale_food_nutrients,
     calculate_meal_macros,
     group_meals_by_slot,
     serialize_meal,
+    convert_to_grams,
+    derive_macro_targets,
     MEAL_SLOT_LABELS,
 )
 from sqlalchemy import or_, and_, func
-from flask_login import current_user, login_required
-from datetime import datetime, date, timedelta
+from flask_login import current_user, login_required, logout_user
+from datetime import datetime, date, timedelta, timezone
+from collections import Counter, defaultdict
+from typing import Dict, Optional
+import math
 import calendar as _calendar
 import pandas as pd
 import plotly.graph_objs as go
+from zoneinfo import ZoneInfo
 
 member_bp = Blueprint('member', __name__, url_prefix='/member')
+EASTERN_TZ = ZoneInfo("America/New_York")
+
+
+def _now_eastern() -> datetime:
+    return datetime.now(EASTERN_TZ)
+
+
+def _today_eastern() -> date:
+    return _now_eastern().date()
+
+
+def _as_eastern(dt: Optional[datetime]) -> Optional[datetime]:
+    if not dt:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(EASTERN_TZ)
+
+
+def _eastern_date(value: Optional[object]) -> Optional[date]:
+    """Normalize a stored date/datetime value into an Eastern-localized date."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        localized = _as_eastern(value)
+        return localized.date() if localized else None
+    return value
+
+
+def _week_start_sunday(value: date) -> date:
+    """Return the Sunday (start of week) for a given date."""
+    return value - timedelta(days=(value.weekday() + 1) % 7)
+
+
+def _user_macro_targets(user: User) -> Dict[str, Optional[float]]:
+    calorie_target = (
+        user.custom_calorie_target
+        or user.calorie_goal
+        or user.maintenance_calories
+    )
+    ratio_overrides = {
+        "protein": user.macro_ratio_protein,
+        "carbs": user.macro_ratio_carbs,
+        "fats": user.macro_ratio_fats,
+    }
+    if not any(value is not None for value in ratio_overrides.values()):
+        ratio_overrides = None
+    return derive_macro_targets(
+        calorie_target,
+        user.custom_protein_target_g,
+        user.custom_carb_target_g,
+        user.custom_fat_target_g,
+        ratio_overrides=ratio_overrides,
+        macro_mode=user.macro_target_mode,
+    )
 
 ACTIVITY_LEVELS = [
     (1.2, "Sedentary (1.2)"),
@@ -138,7 +200,18 @@ def dashboard():
         return redirect(url_for("auth.login_member"))
 
     user = User.query.get(user_id)
-    today = datetime.utcnow().date()
+    has_any_messages = False
+    has_unread_messages = False
+    if user and user.trainer_id:
+        unread = Message.query.filter_by(client_id=user.id, read_at=None).first()
+        has_unread_messages = unread is not None
+        if has_unread_messages:
+            has_any_messages = True
+        else:
+            has_any_messages = (
+                Message.query.filter_by(client_id=user.id).first() is not None
+            )
+    today = _today_eastern()
     search_results = []
 
     if request.method == "POST":
@@ -211,12 +284,7 @@ def dashboard():
     # -----------------------------
     user_food_logs = UserFoodLog.query.filter_by(user_id=user.id, log_date=today).all()
     totals = _calculate_daily_totals(user.id, today)
-    macro_targets = {
-        "calories": user.custom_calorie_target or user.calorie_goal,
-        "protein": user.custom_protein_target_g,
-        "carbs": user.custom_carb_target_g,
-        "fats": user.custom_fat_target_g,
-    }
+    macro_targets = _user_macro_targets(user)
     calorie_goal_value = macro_targets["calories"] or user.calorie_goal or 2000
 
     if user.trainer_id:
@@ -265,6 +333,9 @@ def dashboard():
     calendar_weeks = None
     selected_weight = None
     selected_food_calories = None
+    selected_food_protein = None
+    selected_food_carbs = None
+    selected_food_fats = None
     selected_workouts = []
 
     workout_sessions = (
@@ -288,24 +359,16 @@ def dashboard():
 
         workout_map = {}
         for sess in workout_sessions:
-            dt = getattr(sess, 'completed_at', None) or getattr(sess, 'started_at', None)
-            if not dt:
+            dt_value = getattr(sess, 'completed_at', None) or getattr(sess, 'started_at', None)
+            if not dt_value:
                 continue
             try:
-                day = dt.date() if isinstance(dt, datetime) else dt
+                day = _eastern_date(dt_value)
             except Exception:
+                day = None
+            if not day:
                 continue
             workout_map.setdefault(day, []).append(sess)
-
-        def _format_time(dt_obj):
-            if not dt_obj:
-                return ''
-            try:
-                if isinstance(dt_obj, datetime):
-                    return dt_obj.strftime('%H:%M')
-            except Exception:
-                return ''
-            return ''
 
         def _build_calendar_weeks(year, month, user_obj):
             weeks = []
@@ -328,15 +391,8 @@ def dashboard():
                         day_rows = []
                         for r in rows:
                             dt = getattr(r, 'date', None) or getattr(r, 'log_date', None)
-                            if dt is None:
-                                continue
-                            try:
-                                if isinstance(dt, datetime):
-                                    match = (dt.date() == d)
-                                else:
-                                    match = (dt == d)
-                            except Exception:
-                                match = False
+                            compare_date = _eastern_date(dt)
+                            match = (compare_date == d)
                             if match:
                                 day_rows.append(r)
                         if day_rows:
@@ -355,15 +411,8 @@ def dashboard():
                         fls = []
                         for f in all_fls:
                             dt = getattr(f, 'date', None) or getattr(f, 'log_date', None)
-                            if dt is None:
-                                continue
-                            try:
-                                if isinstance(dt, datetime):
-                                    match = (dt.date() == d)
-                                else:
-                                    match = (dt == d)
-                            except Exception:
-                                match = False
+                            compare_date = _eastern_date(dt)
+                            match = (compare_date == d)
                             if match:
                                 fls.append(f)
 
@@ -398,9 +447,8 @@ def dashboard():
                     for sess in workout_map.get(d, []):
                         workouts_for_day.append({
                             'id': sess.id,
-                            'summary': sess.summary,
-                            'time': _format_time(getattr(sess, 'completed_at', None) or getattr(sess, 'started_at', None)),
                             'template': sess.template.name if getattr(sess, 'template', None) else None,
+                            'duration': _format_duration_display(sess.started_at, sess.completed_at),
                         })
 
                     data = {
@@ -429,16 +477,8 @@ def dashboard():
                 day_rows = []
                 for r in rows:
                     dt = getattr(r, 'date', None) or getattr(r, 'log_date', None)
-                    if dt is None:
-                        continue
-                    try:
-                        if isinstance(dt, datetime):
-                            match = (dt.date() == selected_date)
-                        else:
-                            match = (dt == selected_date)
-                    except Exception:
-                        match = False
-                    if match:
+                    compare_date = _eastern_date(dt)
+                    if compare_date == selected_date:
                         day_rows.append(r)
                 if day_rows:
                     def _ord_key(x):
@@ -456,18 +496,11 @@ def dashboard():
                 total_protein = 0.0
                 total_carbs = 0.0
                 total_fats = 0.0
+                matched_any = False
                 for fl in all_fls:
                     dt = getattr(fl, 'date', None) or getattr(fl, 'log_date', None)
-                    if dt is None:
-                        continue
-                    try:
-                        if isinstance(dt, datetime):
-                            match = (dt.date() == selected_date)
-                        else:
-                            match = (dt == selected_date)
-                    except Exception:
-                        match = False
-                    if not match:
+                    compare_date = _eastern_date(dt)
+                    if compare_date != selected_date:
                         continue
                     if getattr(fl, 'food', None):
                         grams_logged = fl.quantity_in_grams() if hasattr(fl, 'quantity_in_grams') else getattr(fl, 'quantity', 0)
@@ -476,10 +509,17 @@ def dashboard():
                         total_protein += scaled["protein"]
                         total_carbs += scaled["carbs"]
                         total_fats += scaled["fats"]
-                selected_food_calories = round(tot, 1) if tot else None
-                selected_food_protein = round(total_protein, 1) if total_protein else None
-                selected_food_carbs = round(total_carbs, 1) if total_carbs else None
-                selected_food_fats = round(total_fats, 1) if total_fats else None
+                        matched_any = True
+                if matched_any:
+                    selected_food_calories = round(tot, 1)
+                    selected_food_protein = round(total_protein, 1)
+                    selected_food_carbs = round(total_carbs, 1)
+                    selected_food_fats = round(total_fats, 1)
+                else:
+                    selected_food_calories = None
+                    selected_food_protein = None
+                    selected_food_carbs = None
+                    selected_food_fats = None
                 selected_food_items = []
             except Exception:
                 selected_food_calories = None
@@ -499,8 +539,8 @@ def dashboard():
                     )
                     selected_workouts.append({
                         'session': sess,
-                        'time': _format_time(getattr(sess, 'completed_at', None) or getattr(sess, 'started_at', None)),
-                        'summary': sess.summary,
+                        'template_name': sess.template.name if sess.template else 'Workout',
+                        'duration': _format_duration_display(sess.started_at, sess.completed_at),
                         'sets': workout_sets,
                     })
             except Exception:
@@ -570,7 +610,9 @@ def dashboard():
         meal_plan=meal_plan,
         meal_slot_labels=MEAL_SLOT_LABELS,
         member_meal_plan=member_meal_plan,
-        today=today
+        today=today,
+        has_unread_messages=has_unread_messages,
+        has_any_messages=has_any_messages,
     )
 
 
@@ -594,7 +636,11 @@ def _calculate_daily_totals(user_id: int, target_date: date) -> dict:
         totals["carbs"] += scaled["carbs"]
         totals["fat"] += scaled["fats"]
 
-    return {key: round(value, 1) for key, value in totals.items()}
+    totals = {key: round(value, 1) for key, value in totals.items()}
+    totals["macro_calories"] = round(
+        totals["protein"] * 4 + totals["carbs"] * 4 + totals["fat"] * 9, 1
+    )
+    return totals
 
 
 @member_bp.route("/get-totals")
@@ -603,10 +649,31 @@ def get_totals():
     if not user_id:
         return jsonify({"status": "error", "message": "Please log in first."}), 403
 
-    today = datetime.utcnow().date()
+    today = _today_eastern()
     totals = _calculate_daily_totals(user_id, today)
     totals["fats"] = totals["fat"]
     return jsonify(totals)
+
+
+def _format_duration_display(started_at, completed_at):
+    start_time = _as_eastern(started_at)
+    if not start_time:
+        return "--"
+    end_time = _as_eastern(completed_at) if completed_at else None
+    if not end_time:
+        end_time = _now_eastern()
+    try:
+        duration = end_time - start_time
+    except Exception:
+        return "--"
+    total_seconds = max(int(duration.total_seconds()), 0)
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h {minutes}m"
+    if minutes:
+        return f"{minutes}m"
+    return f"{seconds}s"
 
 
 def scaled_macros(food: Food, quantity_in_grams: float):
@@ -689,7 +756,7 @@ def add_meal_to_log(meal_id: int):
     if not user_id:
         return jsonify({"status": "error", "message": "Please log in first."}), 403
 
-    today = datetime.utcnow().date()
+    today = _today_eastern()
     meal = TrainerMeal.query.get(meal_id)
 
     if not meal:
@@ -864,7 +931,7 @@ def add_member_meal_to_log(meal_id: int):
     if not user_id:
         return jsonify({"status": "error", "message": "Please log in first."}), 403
 
-    today = datetime.utcnow().date()
+    today = _today_eastern()
     meal = MemberMeal.query.filter_by(id=meal_id, user_id=user_id).first()
     if not meal:
         return jsonify({"status": "error", "message": "Meal not found."}), 404
@@ -931,7 +998,7 @@ def log_food():
     if quantity <= 0:
         return jsonify({"status": "error", "message": "Quantity must be greater than zero."}), 400
 
-    today = datetime.utcnow().date()
+    today = _today_eastern()
     food = None
     created_food = False
 
@@ -1167,9 +1234,9 @@ def log_weight():
             flash("Invalid date format for weight entry.", "warning")
             return redirect(url_for('member.dashboard', view='profile'))
     else:
-        weight_date = datetime.utcnow().date()
+        weight_date = _today_eastern()
 
-    entry_datetime = datetime.combine(weight_date, datetime.utcnow().time())
+    entry_datetime = datetime.combine(weight_date, _now_eastern().time())
     log_entry = Progress(user_id=user.id, date=entry_datetime, weight=weight_lbs)
     db.session.add(log_entry)
 
@@ -1258,6 +1325,324 @@ def delete_food_log(log_id):
 #-----------------------------
 # Member Summary Page (Weekly and Monthly)
 #-----------------------------
+def build_member_summary_context(client: User, macro_week_param: Optional[int] = None):
+    now = _now_eastern()
+
+    macro_targets = _user_macro_targets(client)
+
+    # ----- WEIGHT TREND -----
+    weights = (
+        db.session.query(Progress.date, Progress.weight)
+        .filter(Progress.user_id == client.id)
+        .order_by(Progress.date)
+        .all()
+    )
+    df_weights = pd.DataFrame(weights, columns=["date", "weight"]) if weights else pd.DataFrame()
+    weight_span = None
+    if weights:
+        first_entry_date, first_entry_weight = weights[0]
+        first_entry_date_str = first_entry_date.strftime("%b %d, %Y") if first_entry_date else "--"
+        last_entry_date, last_entry_weight = weights[-1]
+        last_entry_date_str = last_entry_date.strftime("%b %d, %Y") if last_entry_date else "--"
+        weight_span = {
+            "start_weight": round(first_entry_weight, 1) if first_entry_weight is not None else "--",
+            "start_date": first_entry_date_str,
+            "end_weight": round(last_entry_weight, 1) if last_entry_weight is not None else "--",
+            "end_date": last_entry_date_str,
+        }
+
+    chart_config = {"displayModeBar": False, "responsive": True}
+
+    weight_chart = None
+    if not df_weights.empty:
+        df_weights["date"] = pd.to_datetime(df_weights["date"]).dt.date
+        weights_series = pd.to_numeric(df_weights["weight"], errors="coerce").dropna()
+        y_min = weights_series.min() if not weights_series.empty else 0
+        y_max = weights_series.max() if not weights_series.empty else 0
+        padding = max(1, (y_max - y_min) * 0.1) if y_max != y_min else 5
+        y_axis_range = [max(0, y_min - padding), y_max + padding]
+
+        fig = go.Figure()
+        fig.add_trace(
+            go.Scatter(
+                x=df_weights["date"],
+                y=df_weights["weight"],
+                mode="lines+markers",
+                line=dict(color="#3c7df2", width=3),
+                marker=dict(size=7, color="#0b5394"),
+                fill="tozeroy",
+                fillcolor="rgba(60,125,242,0.18)",
+            )
+        )
+        fig.update_layout(
+            yaxis_title="Weight (lbs)",
+            yaxis=dict(range=y_axis_range, gridcolor="rgba(12,38,77,0.08)"),
+            xaxis=dict(title="", showgrid=False, zeroline=False, showticklabels=False),
+            template="plotly_white",
+            margin=dict(l=36, r=24, t=20, b=4),
+            plot_bgcolor="rgba(248,249,255,0.95)",
+            paper_bgcolor="rgba(248,249,255,0.95)",
+        )
+        weight_chart = fig.to_html(full_html=False, config=chart_config)
+
+    # ----- WEEKLY WORKOUTS (LAST 5 WEEKS) -----
+    weeks_to_show = 5
+
+    current_week_start = _week_start_sunday(now.date())
+    week_starts = [
+        current_week_start - timedelta(weeks=offset)
+        for offset in reversed(range(weeks_to_show))
+    ]
+
+    weekly_workout_chart = None
+    if week_starts:
+        chart_window_start = datetime.combine(
+            week_starts[0],
+            datetime.min.time(),
+            tzinfo=EASTERN_TZ,
+        )
+        chart_start = chart_window_start.astimezone(timezone.utc).replace(tzinfo=None)
+        weekly_sessions = (
+            db.session.query(WorkoutSession.started_at)
+            .filter(WorkoutSession.user_id == client.id)
+            .filter(WorkoutSession.started_at.isnot(None))
+            .filter(WorkoutSession.started_at >= chart_start)
+            .all()
+        )
+
+        weekly_counts = defaultdict(int)
+        for (started_at,) in weekly_sessions:
+            session_date = _eastern_date(started_at)
+            if not session_date:
+                continue
+            session_week_start = _week_start_sunday(session_date)
+            weekly_counts[session_week_start] += 1
+
+        week_labels = []
+        week_values = []
+        for week_start in week_starts:
+            week_labels.append(f"{week_start.month}/{week_start.day:02d}")
+            week_values.append(weekly_counts.get(week_start, 0))
+
+        fig_weekly = go.Figure(
+            [
+                go.Bar(
+                    x=week_labels,
+                    y=week_values,
+                    marker=dict(
+                        color=["#0d6efd", "#5a8dee", "#8bb7ff", "#0a58ca", "#1c7ed6"][: len(week_values)]
+                    ),
+                )
+            ]
+        )
+        fig_weekly.update_layout(
+            title="Weekly Workouts (Last 5 Weeks)",
+            xaxis_title="Week Starting",
+            yaxis_title="Workouts",
+            template="plotly_white",
+            margin=dict(l=36, r=24, t=30, b=20),
+            yaxis=dict(dtick=1, tickmode="linear", tick0=0),
+            plot_bgcolor="rgba(248,249,255,0.95)",
+            paper_bgcolor="rgba(248,249,255,0.95)",
+        )
+        weekly_workout_chart = fig_weekly.to_html(full_html=False, config=chart_config)
+
+    # ----- WORKOUT HISTORY -----
+    history_limit = 10
+    history_sessions = (
+        WorkoutSession.query
+        .filter(WorkoutSession.user_id == client.id)
+        .order_by(WorkoutSession.started_at.desc())
+        .limit(history_limit)
+        .all()
+    )
+
+    workout_history = []
+    for session in history_sessions:
+        session_sets = session.sets or []
+        total_volume = 0
+        exercise_stats = {}
+
+        for workout_set in session_sets:
+            exercise_name = workout_set.exercise_name or "Exercise"
+            stats = exercise_stats.setdefault(
+                exercise_name,
+                {"sets": 0, "best_weight": None, "best_reps": 0},
+            )
+            stats["sets"] += 1
+
+            reps = workout_set.reps or 0
+            weight_value = workout_set.weight
+            weight_for_compare = weight_value if weight_value is not None else 0
+            total_volume += weight_for_compare * reps
+
+            current_best = stats["best_weight"] if stats["best_weight"] is not None else 0
+            should_replace = False
+            if stats["best_weight"] is None or weight_for_compare > current_best:
+                should_replace = True
+            elif weight_for_compare == current_best and reps > stats["best_reps"]:
+                should_replace = True
+
+            if should_replace:
+                stats["best_weight"] = round(weight_value, 1) if weight_value is not None else None
+                stats["best_reps"] = reps
+
+        exercises = [
+            {
+                "name": exercise,
+                "sets": values["sets"],
+                "best_weight": values["best_weight"],
+                "best_reps": values["best_reps"],
+            }
+            for exercise, values in sorted(
+                exercise_stats.items(), key=lambda item: (-item[1]["sets"], item[0])
+            )
+        ]
+        session_name = (
+            (session.template.name if session.template else None)
+            or session.summary
+            or "Logged Workout"
+        )
+        session_date_value = session.completed_at or session.started_at
+        session_date = _as_eastern(session_date_value)
+
+        workout_history.append(
+            {
+                "name": session_name,
+                "date": session_date.strftime("%b %d, %Y") if session_date else "--",
+                "duration": _format_duration_display(session.started_at, session.completed_at),
+                "total_volume": int(total_volume),
+                "exercises": exercises,
+            }
+        )
+
+    # ----- WEEKLY MACRO SUMMARY -----
+    current_week_start = _week_start_sunday(now.date())
+    earliest_log_entry = (
+        UserFoodLog.query
+        .filter(UserFoodLog.user_id == client.id)
+        .order_by(UserFoodLog.log_date.asc().nullslast(), UserFoodLog.created_at.asc())
+        .first()
+    )
+    earliest_log_date = None
+    if earliest_log_entry:
+        earliest_log_date = earliest_log_entry.log_date or _eastern_date(earliest_log_entry.created_at)
+    if not earliest_log_date:
+        earliest_log_date = current_week_start
+    earliest_week_start = _week_start_sunday(earliest_log_date)
+    max_offset = max(0, (current_week_start - earliest_week_start).days // 7)
+    requested_offset = macro_week_param if macro_week_param is not None else 0
+    if requested_offset < 0:
+        requested_offset = 0
+    if requested_offset > max_offset:
+        requested_offset = max_offset
+    macro_week_start = current_week_start - timedelta(weeks=requested_offset)
+    macro_week_end = macro_week_start + timedelta(days=6)
+
+    logs_for_macros = (
+        UserFoodLog.query
+        .filter(UserFoodLog.user_id == client.id)
+        .filter(UserFoodLog.log_date >= earliest_week_start)
+        .filter(UserFoodLog.log_date <= current_week_start + timedelta(days=6))
+        .all()
+    )
+    daily_macro_totals = defaultdict(lambda: {"calories": 0.0, "protein": 0.0, "carbs": 0.0, "fats": 0.0})
+    for log in logs_for_macros:
+        day = log.log_date or _eastern_date(log.created_at)
+        if not day:
+            continue
+        if day < earliest_week_start or day > current_week_start + timedelta(days=6):
+            continue
+        scaled = scale_food_nutrients(log.food, log.quantity_in_grams())
+        daily_macro_totals[day]["calories"] += scaled["calories"]
+        daily_macro_totals[day]["protein"] += scaled["protein"]
+        daily_macro_totals[day]["carbs"] += scaled["carbs"]
+        daily_macro_totals[day]["fats"] += scaled["fats"]
+
+    week_sums = {"calories": 0.0, "protein": 0.0, "carbs": 0.0, "fats": 0.0}
+    for day_offset in range(7):
+        day = macro_week_start + timedelta(days=day_offset)
+        totals = daily_macro_totals.get(day)
+        if totals:
+            for key in week_sums:
+                week_sums[key] += totals[key]
+    days_elapsed = 7
+    if requested_offset == 0:
+        today = now.date()
+        if today < macro_week_start:
+            days_elapsed = 1
+        else:
+            days_elapsed = min(7, (today - macro_week_start).days + 1)
+        days_elapsed = max(1, days_elapsed)
+    macro_week_averages = {
+        key: round(week_sums[key] / days_elapsed, 1) if days_elapsed else 0.0
+        for key in week_sums
+    }
+
+    macro_colors = {
+        "Protein": "#16a34a",
+        "Carbs": "#2563eb",
+        "Fats": "#dc2626",
+    }
+    macro_wheel_segments = []
+    total_macro_calories = 0.0
+    wheel_config = [
+        ("Protein", macro_week_averages["protein"], 4, "g"),
+        ("Carbs", macro_week_averages["carbs"], 4, "g"),
+        ("Fats", macro_week_averages["fats"], 9, "g"),
+    ]
+    for label, grams_value, calorie_factor, suffix in wheel_config:
+        grams_value = grams_value or 0.0
+        calories = grams_value * calorie_factor
+        total_macro_calories += calories
+        macro_wheel_segments.append(
+            {
+                "label": label,
+                "value": round(grams_value, 1),
+                "suffix": suffix,
+                "calories": calories,
+                "color": macro_colors[label],
+            }
+        )
+    gradient_parts = []
+    running_pct = 0.0
+    for segment in macro_wheel_segments:
+        if total_macro_calories > 0:
+            pct = (segment["calories"] / total_macro_calories) * 100
+        else:
+            pct = 0
+        segment["percent"] = round(pct, 1)
+        start = running_pct
+        end = running_pct + pct
+        if pct > 0:
+            gradient_parts.append(f"{segment['color']} {start:.2f}% {end:.2f}%")
+        running_pct = end
+    if running_pct < 100.0:
+        gradient_parts.append(f"var(--macro-wheel-base-color) {running_pct:.2f}% 100%")
+    macro_wheel_gradient = ", ".join(gradient_parts) if gradient_parts else "var(--macro-wheel-base-color) 0% 100%"
+    macro_week_summary = {
+        "label": f"{macro_week_start.strftime('%b %d')} - {macro_week_end.strftime('%b %d, %Y')}",
+        "averages": macro_week_averages,
+        "days_elapsed": days_elapsed,
+    }
+    macro_week_prev = requested_offset + 1 if requested_offset < max_offset else None
+    macro_week_next = requested_offset - 1 if requested_offset > 0 else None
+
+    return {
+        "client": client,
+        "weight_span": weight_span,
+        "weight_chart": weight_chart,
+        "weekly_workout_chart": weekly_workout_chart,
+        "workout_history": workout_history,
+        "macro_week_summary": macro_week_summary,
+        "macro_week_prev": macro_week_prev,
+        "macro_week_next": macro_week_next,
+        "macro_wheel_segments": macro_wheel_segments,
+        "macro_wheel_gradient": macro_wheel_gradient,
+        "macro_targets": macro_targets,
+    }
+
+
 @member_bp.route('/summary')
 @login_required
 def member_summary():
@@ -1266,145 +1651,54 @@ def member_summary():
         flash("Access denied.", "danger")
         return redirect(url_for('member.dashboard'))
 
-    client = current_user
-    now = datetime.utcnow()
-    week_ago = now - timedelta(days=7)
-    month_ago = now - timedelta(days=30)
-
-    # ----- WEIGHT DATA -----
-    weights = (
-        db.session.query(Progress.date, Progress.weight)
-        .filter(Progress.user_id == client.id)
-        .order_by(Progress.date)
-        .all()
-    )
-    df_weights = pd.DataFrame(weights, columns=["date", "weight"]) if weights else pd.DataFrame()
-
-    # ----- AGGREGATION HELPERS -----
-    def get_nutrition(start_date, days):
-        q = (
-            db.session.query(
-                func.sum(Food.calories * UserFoodLog.quantity).label("calories"),
-                func.sum(Food.protein_g * UserFoodLog.quantity).label("protein"),
-                func.sum(Food.carbs_g * UserFoodLog.quantity).label("carbs"),
-                func.sum(Food.fats_g * UserFoodLog.quantity).label("fats"),
-            )
-            .select_from(UserFoodLog)
-            .join(Food, Food.id == UserFoodLog.food_id)
-            .filter(UserFoodLog.user_id == client.id)
-            .filter(UserFoodLog.log_date >= start_date)
-        ).first()
-        return {
-            "calories": round((q.calories or 0) / days, 1),
-            "protein": round((q.protein or 0) / days, 1),
-            "carbs": round((q.carbs or 0) / days, 1),
-            "fats": round((q.fats or 0) / days, 1),
-        }
-
-    def get_workouts(start_date):
-        q = (
-            db.session.query(
-                func.count(func.distinct(WorkoutSession.id)).label("workouts"),
-                func.count(WorkoutSet.id).label("sets"),
-                func.sum(WorkoutSet.reps).label("reps"),
-                func.sum(WorkoutSet.reps * WorkoutSet.weight).label("volume"),
-            )
-            .select_from(WorkoutSession)
-            .join(WorkoutSet, WorkoutSet.session_id == WorkoutSession.id)
-            .filter(WorkoutSession.user_id == client.id)
-            .filter(WorkoutSession.started_at >= start_date)
-        ).first()
-        return {
-            "workouts": int(q.workouts or 0),
-            "sets": int(q.sets or 0),
-            "reps": int(q.reps or 0),
-            "volume": int(q.volume or 0),
-        }
-
-    # ----- AGGREGATED DATA -----
-    weekly_nutrition = get_nutrition(week_ago, 7)
-    monthly_nutrition = get_nutrition(month_ago, 30)
-    weekly_workouts = get_workouts(week_ago)
-    monthly_workouts = get_workouts(month_ago)
-
-    # ----- CHARTS -----
-    # 1️⃣ Weight line chart
-    weight_chart = None
-    if not df_weights.empty:
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=df_weights["date"],
-            y=df_weights["weight"],
-            mode="lines+markers",
-            line=dict(color="#007bff", width=3),
-            marker=dict(size=7)
-        ))
-        fig.update_layout(
-            title="Your Weight Progress",
-            xaxis_title="Date",
-            yaxis_title="Weight (kg)",
-            template="plotly_white",
-            margin=dict(l=40, r=40, t=60, b=40)
-        )
-        weight_chart = fig.to_html(full_html=False)
-
-    # 2️⃣ Weekly Bar chart
-    weekly_categories = ["Calories", "Protein", "Carbs", "Fats", "Workouts", "Sets", "Reps", "Volume"]
-    weekly_values = [
-        weekly_nutrition["calories"], weekly_nutrition["protein"],
-        weekly_nutrition["carbs"], weekly_nutrition["fats"],
-        weekly_workouts["workouts"], weekly_workouts["sets"],
-        weekly_workouts["reps"], weekly_workouts["volume"]
-    ]
-    colors = ["#36a2eb"] * 4 + ["#ff9800"] * 4
-
-    fig_weekly = go.Figure([go.Bar(x=weekly_categories, y=weekly_values, marker_color=colors)])
-    fig_weekly.update_layout(
-        title="Your Weekly Summary: Nutrition & Workouts",
-        xaxis_title="Metrics",
-        yaxis_title="Values",
-        template="plotly_white",
-        margin=dict(l=40, r=40, t=60, b=40)
-    )
-    weekly_chart = fig_weekly.to_html(full_html=False)
-
-    # 3️⃣ Monthly Bar chart
-    monthly_categories = ["Calories", "Protein", "Carbs", "Fats", "Workouts", "Sets", "Reps", "Volume"]
-    monthly_values = [
-        monthly_nutrition["calories"], monthly_nutrition["protein"],
-        monthly_nutrition["carbs"], monthly_nutrition["fats"],
-        monthly_workouts["workouts"], monthly_workouts["sets"],
-        monthly_workouts["reps"], monthly_workouts["volume"]
-    ]
-
-    fig_monthly = go.Figure([go.Bar(x=monthly_categories, y=monthly_values, marker_color=colors)])
-    fig_monthly.update_layout(
-        title="Your Monthly Summary: Nutrition & Workouts",
-        xaxis_title="Metrics",
-        yaxis_title="Values",
-        template="plotly_white",
-        margin=dict(l=40, r=40, t=60, b=40)
-    )
-    monthly_chart = fig_monthly.to_html(full_html=False)
-
-    # ----- RENDER -----
-    return render_template(
-        "member-summary.html",
-        client=client,
-        weight_chart=weight_chart,
-        weekly_chart=weekly_chart,
-        monthly_chart=monthly_chart,
-        weekly_nutrition=weekly_nutrition,
-        monthly_nutrition=monthly_nutrition,
-        weekly_workouts=weekly_workouts,
-        monthly_workouts=monthly_workouts,
-    )
+    macro_week_param = request.args.get("macro_week", type=int)
+    context = build_member_summary_context(current_user, macro_week_param)
+    macro_week_prev = context.get("macro_week_prev")
+    macro_week_next = context.get("macro_week_next")
+    context.update({
+        "summary_role": "member",
+        "stats_heading": "My Stats",
+        "summary_nav": "member",
+        "macro_prev_url": url_for('member.member_summary', macro_week=macro_week_prev) if macro_week_prev is not None else None,
+        "macro_next_url": url_for('member.member_summary', macro_week=macro_week_next) if macro_week_next is not None else None,
+    })
+    return render_template("member-summary.html", **context)
 
 # -----------------------------
 # Log out
 # -----------------------------
 @member_bp.route("/logout")
 def logout():
+    theme_pref = getattr(current_user, "theme_mode", None)
+    logout_user()
+    preserved_theme = theme_pref or session.get("theme_mode") or "light"
     session.clear()  # Clears the entire session
+    session["theme_mode"] = preserved_theme
     flash("You have been logged out successfully.", "success")
     return redirect(url_for("auth.login_member"))
+
+
+@member_bp.route("/messages", methods=["GET"])
+@login_required
+def view_messages():
+    if current_user.role != "member":
+        flash("Access denied.", "danger")
+        return redirect(url_for("main.home"))
+
+    messages = (
+        Message.query
+        .filter_by(client_id=current_user.id)
+        .order_by(Message.timestamp.desc())
+        .all()
+    )
+    unread = [message for message in messages if message.read_at is None]
+    if unread:
+        now = datetime.utcnow()
+        for message in unread:
+            message.read_at = now
+        db.session.commit()
+    return render_template(
+        "client_messages.html",
+        messages=messages,
+        user=current_user,
+    )

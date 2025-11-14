@@ -22,6 +22,11 @@ class User(db.Model, UserMixin):
     custom_protein_target_g = db.Column(db.Float, nullable=True)
     custom_carb_target_g = db.Column(db.Float, nullable=True)
     custom_fat_target_g = db.Column(db.Float, nullable=True)
+    theme_mode = db.Column(db.String(20), nullable=True, default="light")
+    macro_target_mode = db.Column(db.String(20), nullable=True)
+    macro_ratio_protein = db.Column(db.Float, nullable=True)
+    macro_ratio_carbs = db.Column(db.Float, nullable=True)
+    macro_ratio_fats = db.Column(db.Float, nullable=True)
 
     # 🔹 Link each member to a trainer
     trainer_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
@@ -316,3 +321,23 @@ class WorkoutSet(db.Model):
     weight = db.Column(db.Float)
 
     template_exercise = db.relationship('TemplateExercise')
+
+
+class Message(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    trainer_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    client_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    read_at = db.Column(db.DateTime, nullable=True)
+
+    trainer = db.relationship(
+        'User',
+        foreign_keys=[trainer_id],
+        backref=db.backref('sent_messages', lazy='dynamic')
+    )
+    client = db.relationship(
+        'User',
+        foreign_keys=[client_id],
+        backref=db.backref('received_messages', lazy='dynamic')
+    )

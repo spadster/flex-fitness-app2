@@ -1,0 +1,39 @@
+{% extends "layout.html" %}
+{% block title %}Messages{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-4 gap-3">
+  <div>
+    <h1 class="h3 mb-1">Trainer Messages</h1>
+    <p class="text-muted mb-0">Your latest messages appear below.</p>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('member.dashboard') }}" class="btn btn-outline-secondary">Back to Dashboard</a>
+  </div>
+</div>
+
+{% if messages %}
+  <div class="list-group">
+    {% for message in messages %}
+      <div class="list-group-item">
+        <div class="d-flex justify-content-between align-items-start gap-3">
+          <div>
+            <p class="mb-1">{{ message.content }}</p>
+            <small class="text-muted">
+              Sent {{ message.timestamp.strftime('%b %d, %Y %I:%M %p') if message.timestamp else 'just now' }}
+              {% if message.trainer %}
+                by {{ message.trainer.first_name }} {{ message.trainer.last_name }}
+              {% endif %}
+            </small>
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="text-center py-5">
+    <p class="text-muted mb-1">No messages yet.</p>
+    <p class="text-muted small">Your trainer's notes will appear here once they send them.</p>
+  </div>
+{% endif %}
+{% endblock %}
