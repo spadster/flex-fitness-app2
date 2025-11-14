@@ -111,6 +111,21 @@ def _get_trainer_client(member_id: int) -> User:
     return client
 
 
+@trainer_bp.route('/clients/<int:member_id>/remove', methods=['POST'])
+@login_required
+def remove_client(member_id):
+    if current_user.role != 'trainer':
+        flash("Access denied.", "danger")
+        return redirect(url_for('main.home'))
+
+    client = _get_trainer_client(member_id)
+    client_name = f"{client.first_name} {client.last_name}"
+    client.trainer_id = None
+    db.session.commit()
+    flash(f"Removed {client_name} from your client list.", "success")
+    return redirect(url_for('trainer.dashboard_trainer'))
+
+
 @trainer_bp.route('/clients/<int:member_id>', methods=['GET', 'POST'])
 @login_required
 def client_detail(member_id):

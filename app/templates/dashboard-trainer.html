@@ -38,13 +38,6 @@
             <tr>
               <th scope="col">Member</th>
               <th scope="col">Email</th>
-              <th scope="col">Gender</th>
-              <th scope="col">Age</th>
-              <th scope="col">Latest Weight</th>
-              <th scope="col" class="text-center">Calories</th>
-              <th scope="col" class="text-center">Protein (g)</th>
-              <th scope="col" class="text-center">Carbs (g)</th>
-              <th scope="col" class="text-center">Fats (g)</th>
               <th scope="col" class="text-end">Actions</th>
             </tr>
           </thead>
@@ -55,16 +48,14 @@
                   <strong>{{ client.record.first_name }} {{ client.record.last_name }}</strong>
                 </td>
                 <td>{{ client.record.email }}</td>
-                <td>{{ client.gender if client.gender is not none else '—' }}</td>
-                <td>{{ client.age if client.age is not none else '—' }}</td>
-                <td>{{ client.weight if client.weight is not none else '—' }}</td>
-                <td class="text-center">{{ '%.1f' | format(client.macros.calories) }}</td>
-                <td class="text-center">{{ '%.1f' | format(client.macros.protein) }}</td>
-                <td class="text-center">{{ '%.1f' | format(client.macros.carbs) }}</td>
-                <td class="text-center">{{ '%.1f' | format(client.macros.fats) }}</td>
                 <td class="text-end">
                   <a href="{{ url_for('trainer.client_detail', member_id=client.record.id) }}" class="btn btn-sm btn-outline-primary">View</a>
                   <a href="{{ url_for('trainer.send_message', client_id=client.record.id) }}" class="btn btn-sm btn-primary ms-1">Message</a>
+                  <form action="{{ url_for('trainer.remove_client', member_id=client.record.id) }}" method="post" class="d-inline">
+                    <button type="submit" class="btn btn-sm btn-outline-danger ms-1" onclick="return confirm('Remove {{ client.record.first_name }} {{ client.record.last_name }} from your clients?');">
+                      Remove
+                    </button>
+                  </form>
                 </td>
               </tr>
             {% endfor %}
