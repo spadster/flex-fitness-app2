@@ -10,18 +10,16 @@
 </head>
 <body class="app-shell" data-theme="{{ theme_mode or 'light' }}">
 
-  <header class="app-top-bar">
-    <div class="container d-flex align-items-center justify-content-between">
-      <a class="app-brand" href="{{ url_for('main.home')}}">Temp</a>
-      <div class="app-actions">
-        <button type="button" class="theme-toggle btn btn-sm btn-outline-light" aria-label="Toggle theme" aria-pressed="{{ 'true' if theme_mode == 'dark' else 'false' }}">
-          <span class="theme-toggle-label">{{ 'Light mode' if theme_mode == 'dark' else 'Dark mode' }}</span>
-        </button>
-        <span class="app-role-label">Trainer</span>
-        <a href="{{ url_for('main.home')}}" class="app-logout-link">Back to site</a>
-      </div>
-    </div>
-  </header>
+<nav class="navbar navbar-dark bg-primary py-2">
+  <div class="container d-flex justify-content-between align-items-center">
+    <span class="navbar-brand fw-bold mb-0">Temp</span>
+
+    <a href="{{ url_for('main.home') }}" class="text-white small text-decoration-none">
+      Back to site
+    </a>
+  </div>
+</nav>
+
 
   <div class="container d-flex flex-column justify-content-center align-items-center" style="min-height: 90vh;">
     <div class="card shadow-sm w-100" style="max-width: 400px;">

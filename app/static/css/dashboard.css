@@ -295,3 +295,12 @@ body.app-shell[data-theme="dark"] .macro-summary-wheel {
 body.app-shell[data-theme="dark"] .macro-summary-wheel::after {
   box-shadow: inset 0 0 20px rgba(2, 6, 23, 0.55);
 }
+
+.app-top-bar {
+  padding: 0.25rem 0 !important; /* smaller padding */
+  min-height: 48px !important;   /* match bootstrap navbar height */
+}
+
+.app-top-bar .container {
+  min-height: 48px !important;   /* match inner height */
+}
